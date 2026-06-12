@@ -1,0 +1,2577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<title>标准木箱装箱计算器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; overflow: hidden; }
+
+  .app-header { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .app-header h1 { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+  .app-header .subtitle { font-size: 12px; color: #888; margin-left: 8px; display: none; }
+  .header-actions { display: flex; gap: 6px; }
+
+  .layout { display: grid; grid-template-columns: 380px 1fr; height: calc(100vh - 56px); }
+  .sidebar { background: #fff; border-right: 1px solid #e8e8e8; overflow-y: auto; padding: 0; }
+
+  /* 移动端侧边栏遮罩 */
+  .sidebar-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.4); }
+  .sidebar-overlay.show { display: block; }
+
+  .sidebar-section { padding: 14px 16px; border-bottom: 1px solid #f0f0f0; }
+  .sidebar-section h3 { font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+  /* 模式切换 */
+  .mode-switch { display: flex; background: #f5f5f5; border-radius: 8px; padding: 3px; gap: 2px; }
+  .mode-btn { flex: 1; padding: 7px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #888; transition: all 0.2s; text-align: center; }
+  .mode-btn.active { background: #fff; color: #1677ff; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+  .form-row.two { grid-template-columns: 1fr 1fr; }
+  .field-group { display: flex; flex-direction: column; gap: 2px; }
+  .field-group label { font-size: 11px; color: #888; font-weight: 500; }
+  .field-group input { border: 1px solid #d9d9d9; border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%; background: #fafafa; }
+  .field-group input:focus { border-color: #1677ff; background: #fff; }
+
+  .box-item { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; transition: opacity 0.2s, background 0.2s; }
+  .box-item.box-item-disabled { opacity: 0.5; background: #f0f0f0; }
+  .box-item.box-item-disabled input { pointer-events: none; }
+  .box-item.box-item-disabled .spec-del-btn { pointer-events: none; }
+  .box-check-label { display: flex; align-items: center; cursor: pointer; margin-right: 6px; flex-shrink: 0; }
+  .box-checkbox { width: 16px; height: 16px; cursor: pointer; margin: 0; accent-color: #1677ff; }
+  .box-item-header { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+  .box-item-header .box-label { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; flex: 1; }
+  .color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .remove-btn { background: none; border: none; cursor: pointer; color: #ccc; font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px; transition: color 0.2s; }
+  .remove-btn:hover { color: #ff4d4f; }
+
+  .qty-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e8e8e8; }
+  .qty-row label { font-size: 11px; color: #888; white-space: nowrap; }
+  .qty-input { border: 1px solid #d9d9d9; border-radius: 6px; padding: 5px 8px; font-size: 12px; width: 70px; outline: none; background: #fafafa; }
+  .qty-input:focus { border-color: #1677ff; }
+  .qty-hint { font-size: 11px; color: #bbb; }
+
+  .btn { border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; padding: 8px 16px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: #1677ff; color: #fff; width: 100%; justify-content: center; padding: 10px; font-size: 14px; }
+  .btn-primary:hover { background: #0958d9; }
+  .btn-outline { background: #fff; color: #1677ff; border: 1px solid #1677ff; }
+  .btn-outline:hover { background: #e6f4ff; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-danger { background: #fff0f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+
+  .calc-btn-area { padding: 14px 16px; }
+  .main-view { display: flex; flex-direction: column; overflow: hidden; }
+  .tabs { display: flex; border-bottom: 1px solid #e8e8e8; background: #fff; padding: 0 16px; gap: 0; }
+  .tab { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #666; transition: all 0.2s; }
+  .tab.active { color: #1677ff; border-bottom-color: #1677ff; font-weight: 500; }
+  .tab:hover:not(.active) { color: #333; }
+
+  .view-content { flex: 1; overflow: hidden; position: relative; }
+  .view-panel { position: absolute; inset: 0; overflow-y: auto; padding: 16px; display: none; }
+  .view-panel.active { display: block; }
+  .view-panel.three-panel { padding: 0; overflow: hidden; }
+  .view-panel.three-panel.active { display: flex; flex-direction: column; }
+
+  #three-canvas-wrap { flex: 1; position: relative; background: #1a1e2e; min-height: 300px; }
+  #three-canvas-wrap canvas { display: block; }
+  .canvas-overlay { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.65); border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 11px; line-height: 1.8; pointer-events: none; max-width: 200px; }
+  .canvas-overlay b { color: #60a5fa; }
+  .canvas-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); border-radius: 20px; padding: 4px 14px; color: rgba(255,255,255,0.7); font-size: 11px; pointer-events: none; white-space: nowrap; }
+  .box-hover-tooltip { position: absolute; pointer-events: none; background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 11px; line-height: 1.6; white-space: nowrap; z-index: 100; opacity: 0; transition: opacity 0.1s; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .box-hover-tooltip.visible { opacity: 1; }
+  .box-hover-tooltip .ht-name { font-weight: 600; color: #60a5fa; font-size: 12px; margin-bottom: 2px; }
+  .box-hover-tooltip .ht-dims { color: #ccc; }
+  .box-hover-tooltip .ht-rotated { color: #fa8c16; font-size: 10px; margin-top: 2px; }
+
+  .legend-overlay { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.65); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 10px; line-height: 2; pointer-events: none; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  .tip-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #e8e8e8; color: #888; font-size: 11px; font-weight: 700; cursor: help; user-select: none; flex-shrink: 0; line-height: 1; transition: background 0.2s, color 0.2s; }
+  .tip-icon:hover { background: #1677ff; color: #fff; }
+  .tip-overlay { position: fixed; z-index: 9999; background: #1a1a2e; color: #e0e0e0; font-size: 12px; line-height: 1.7; padding: 10px 14px; border-radius: 8px; max-width: 260px; pointer-events: none; opacity: 0; transition: opacity 0.15s; box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+  .tip-overlay.show { opacity: 1; }
+  .tip-overlay .tip-head { font-weight: 600; color: #60a5fa; margin-bottom: 4px; font-size: 13px; }
+  .tip-overlay .tip-row { padding-left: 4px; color: #ccc; }
+
+  .three-controls { background: #fff; border-top: 1px solid #e8e8e8; padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .scheme-tabs { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+  .scheme-tab { padding: 4px 10px; border-radius: 20px; font-size: 11px; cursor: pointer; border: 1px solid #d9d9d9; background: #fff; color: #666; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+  .scheme-tab.active { border-color: #1677ff; background: #e6f4ff; color: #1677ff; }
+  .view-btns { display: flex; gap: 6px; }
+  .view-btn { background: #1a1e2e; border: 1.5px solid #3a4060; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; color: #c0c8e0; transition: all 0.2s; font-weight: 500; white-space: nowrap; }
+  .view-btn:hover { background: #2a3050; color: #fff; border-color: #60a5fa; }
+
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .result-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 14px; transition: box-shadow 0.2s; }
+  .result-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .result-card.best { border-color: #52c41a; }
+  .result-card.mixed-card { border-color: #1677ff; grid-column: 1 / -1; }
+  .result-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
+  .rc-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .best-badge { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
+  .mixed-badge { background: #e6f4ff; color: #1677ff; border: 1px solid #91caff; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
+  .rc-meta { font-size: 12px; color: #888; }
+
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .stat-row.four { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .stat-item { background: #f8f9fa; border-radius: 8px; padding: 8px; text-align: center; }
+  .stat-val { font-size: 20px; font-weight: 600; color: #1677ff; line-height: 1.2; }
+  .stat-lbl { font-size: 11px; color: #888; margin-top: 2px; }
+  .stat-val.green { color: #52c41a; }
+  .stat-val.orange { color: #fa8c16; }
+
+  .mix-breakdown { margin-top: 10px; border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; }
+  .mix-breakdown-header { background: #fafafa; padding: 8px 10px; font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #f0f0f0; }
+  .mix-breakdown-row { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f8f8f8; font-size: 13px; gap: 8px; }
+  .mix-breakdown-row:last-child { border-bottom: none; }
+  .mbd-name { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .mbd-count { font-weight: 600; color: #1677ff; min-width: 45px; text-align: right; }
+  .mbd-pct { font-size: 11px; color: #888; min-width: 40px; text-align: right; }
+
+  .arrange-detail { margin-top: 8px; background: #f8f9fa; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #555; }
+  .arrange-detail .arr-row { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; }
+  .arr-label { color: #888; }
+  .arr-val { font-weight: 500; color: #333; }
+
+  .history-list { display: flex; flex-direction: column; gap: 8px; }
+  .history-item { background: #fff; border: 1px solid #e8e8e8; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+  .history-item:hover { border-color: #1677ff; background: #f6faff; }
+  .history-item .hi-time { font-size: 11px; color: #bbb; white-space: nowrap; }
+  .history-item .hi-info { flex: 1; font-size: 13px; min-width: 0; }
+  .history-item .hi-info b { color: #1a1a1a; }
+  .history-item .hi-count { font-size: 13px; font-weight: 600; color: #1677ff; white-space: nowrap; }
+  .history-del { background: none; border: none; cursor: pointer; color: #ddd; font-size: 16px; padding: 2px; border-radius: 4px; }
+  .history-del:hover { color: #ff4d4f; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: #bbb; }
+  .empty-state .es-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 13px; }
+
+  .no-result { text-align: center; padding: 80px 20px; }
+  .no-result .nr-icon { font-size: 56px; margin-bottom: 16px; }
+  .no-result h3 { font-size: 16px; color: #333; margin-bottom: 8px; }
+  .no-result p { font-size: 13px; color: #888; }
+
+  .util-bar { height: 6px; border-radius: 3px; background: #f0f0f0; margin-top: 8px; overflow: hidden; }
+  .util-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+  .tag-rotate { display: inline-flex; align-items: center; gap: 4px; background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; border-radius: 4px; padding: 2px 7px; font-size: 11px; margin-left: 6px; }
+  .tag-mixed { display: inline-flex; align-items: center; gap: 4px; background: #e6f4ff; color: #0958d9; border: 1px solid #91caff; border-radius: 4px; padding: 2px 7px; font-size: 11px; margin-left: 6px; }
+  .tag-strategy { display: inline-flex; align-items: center; gap: 4px; background: #f0f5ff; color: #1677ff; border: 1px solid #adc6ff; border-radius: 4px; padding: 2px 7px; font-size: 11px; margin-left: 6px; }
+  .tag-strategy.util { background: #f6ffed; color: #389e0d; border-color: #b7eb8f; }
+
+  .section-action { float: right; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
+
+  .alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .alert-error { background: #fff2f0; border: 1px solid #ffccc7; color: #a8071a; }
+  .alert-success { background: #f6ffed; border: 1px solid #b7eb8f; color: #135200; }
+
+  .mode-hint { font-size: 12px; color: #888; background: #f8f9fa; border-radius: 6px; padding: 8px 10px; margin-top: 8px; line-height: 1.6; }
+
+  .spec-actions-row { display: flex; gap: 6px; margin-top: 8px; position: relative; flex-wrap: wrap; }
+  .spec-actions-row .btn-spec { font-size: 11px; padding: 4px 10px; border-radius: 5px; border: 1px solid #d9d9d9; background: #fff; color: #555; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 3px; }
+  .spec-actions-row .btn-spec:hover { border-color: #1677ff; color: #1677ff; background: #f6faff; }
+  .spec-actions-row .btn-spec.save-btn { color: #52c41a; border-color: #b7eb8f; }
+  .spec-actions-row .btn-spec.save-btn:hover { background: #f6ffed; }
+  .spec-actions-row .btn-spec.import-btn { color: #1677ff; border-color: #91caff; }
+  .spec-actions-row .btn-spec.import-btn:hover { background: #e6f4ff; }
+
+  .modal-overlay { position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; }
+  .modal-content { background: #fff; border-radius: 12px; box-shadow: 0 12px 48px rgba(0,0,0,0.2); width: 520px; max-width: 95vw; max-height: 70vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; }
+  .modal-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; padding: 4px 8px; border-radius: 4px; line-height: 1; }
+  .modal-close:hover { background: #f5f5f5; color: #333; }
+  .modal-tabs { display: flex; border-bottom: 1px solid #f0f0f0; padding: 0 16px; gap: 0; }
+  .modal-tab { padding: 8px 14px; font-size: 13px; cursor: pointer; border: none; background: none; color: #888; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .modal-tab.active { color: #1677ff; border-bottom-color: #1677ff; font-weight: 500; }
+  .modal-tab:hover:not(.active) { color: #333; }
+  .modal-body { flex: 1; overflow-y: auto; padding: 0; }
+  .spec-table { width: 100%; border-collapse: collapse; }
+  .spec-table th { text-align: left; font-size: 11px; color: #888; font-weight: 600; padding: 8px 16px; background: #fafafa; border-bottom: 1px solid #f0f0f0; position: sticky; top: 0; }
+  .spec-table td { padding: 8px 16px; border-bottom: 1px solid #f8f8f8; font-size: 13px; }
+  .spec-table tr:last-child td { border-bottom: none; }
+  .spec-table tr:hover td { background: #f6faff; }
+  .spec-table .dim-mono { font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 13px; color: #333; }
+  .spec-table .btn-table { font-size: 11px; padding: 4px 10px; border-radius: 4px; border: 1px solid; cursor: pointer; transition: all 0.15s; }
+  .spec-table .btn-table.import { color: #1677ff; border-color: #91caff; background: #fff; }
+  .spec-table .btn-table.import:hover { background: #e6f4ff; }
+  .spec-table .btn-table.delete { color: #ff4d4f; border-color: #ffccc7; background: #fff; margin-left: 6px; }
+  .spec-table .btn-table.delete:hover { background: #fff2f0; }
+  .modal-empty { text-align: center; padding: 40px 20px; color: #bbb; font-size: 13px; }
+
+  .spec-del-btn { font-size: 11px; color: #52c41a; cursor: pointer; background: none; border: none; opacity: 0; transition: opacity 0.15s; white-space: nowrap; padding: 2px 4px; }
+  .box-item:hover .spec-del-btn { opacity: 0.7; }
+  .box-item .spec-del-btn:hover { opacity: 1; }
+
+  /* 移动端底部 Tab 导航 */
+  .mobile-tab-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #e8e8e8; z-index: 150; padding: 4px 0 env(safe-area-inset-bottom, 0); }
+  .mobile-tab-bar .mtab { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border: none; background: none; color: #888; font-size: 10px; cursor: pointer; gap: 2px; }
+  .mobile-tab-bar .mtab .mtab-icon { font-size: 20px; }
+  .mobile-tab-bar .mtab.active { color: #1677ff; }
+
+  /* 侧边栏关闭按钮（移动端） */
+  .sidebar-close-btn { display: none; position: absolute; top: 8px; right: 8px; z-index: 10; background: #f5f5f5; border: 1px solid #d9d9d9; border-radius: 50%; width: 32px; height: 32px; font-size: 18px; cursor: pointer; align-items: center; justify-content: center; color: #666; }
+
+  /* 响应式 */
+  @media (max-width: 860px) {
+    body { overflow: auto; }
+    .app-header { padding: 0 12px; height: 48px; }
+    .app-header h1 { font-size: 14px; }
+    .app-header .subtitle { display: none; }
+    .header-actions .btn { padding: 5px 8px; font-size: 11px; }
+
+    .layout { display: block; height: auto; }
+
+    /* 侧边栏：移动端变为固定覆盖层 */
+    .sidebar { position: fixed; top: 48px; left: 0; bottom: 56px; width: 320px; max-width: 90vw; z-index: 250; transform: translateX(-100%); transition: transform 0.25s ease; overflow-y: auto; box-shadow: 2px 0 16px rgba(0,0,0,0.15); }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-close-btn { display: flex; }
+
+    .main-view { height: calc(100vh - 48px - 56px); }
+    .mobile-tab-bar { display: flex; }
+
+    .view-panel { padding: 10px; }
+    .canvas-overlay { max-width: 160px; font-size: 10px; }
+    .canvas-hint { font-size: 10px; }
+
+    .result-grid { grid-template-columns: 1fr; }
+    .result-card.mixed-card { grid-column: 1; }
+    .stat-row.four { grid-template-columns: 1fr 1fr; }
+
+    .three-controls { padding: 6px 8px; gap: 4px; }
+    .scheme-tab { padding: 3px 8px; font-size: 10px; }
+    .view-btn { padding: 5px 10px; font-size: 11px; }
+
+    .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .form-row.two { grid-template-columns: 1fr 1fr; }
+    .field-group input { padding: 6px 8px; font-size: 12px; }
+
+    .modal-content { width: 95vw; max-height: 85vh; }
+  }
+
+  @media (max-width: 400px) {
+    .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+    .header-actions { gap: 4px; }
+    .header-actions .btn { padding: 4px 6px; font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div style="display:flex;align-items:center">
+    <h1>📦 标准木箱装箱计算器</h1>
+    <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline btn-sm" onclick="App.exportResult()">导出</button>
+    <button class="btn btn-sm" style="background:#f5f5f5;border:1px solid #d9d9d9;color:#666" onclick="App.clearAll()">重置</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- 左侧输入面板 -->
+  <div class="sidebar" id="sidebar-panel">
+    <button class="sidebar-close-btn" onclick="App.closeSidebar()">&times;</button>
+
+    <div class="sidebar-section">
+      <h3>计算模式</h3>
+      <div class="mode-switch">
+        <button class="mode-btn active" id="mode-btn-single" onclick="App.setMode('single')">📊 单品对比</button>
+        <button class="mode-btn" id="mode-btn-mixed" onclick="App.setMode('mixed')">🎲 混装模式</button>
+      </div>
+      <div id="mode-single-hint" class="mode-hint">每种纸箱各自独立计算最大装入量，对比哪种方案最优</div>
+      <div id="mode-mixed-hint" class="mode-hint" style="display:none">多种纸箱混放在同一木箱，可指定各种纸箱的需求数量（留空=尽量多），自动分配位置最大化利用率</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>木箱尺寸（内径）</h3>
+      <div class="form-row">
+        <div class="field-group">
+          <label>长 L (mm)</label>
+          <input type="number" id="c-l" value="1200" min="1" placeholder="1200" oninput="App.updateCrateVol()">
+        </div>
+        <div class="field-group">
+          <label>宽 W (mm)</label>
+          <input type="number" id="c-w" value="1000" min="1" placeholder="1000" oninput="App.updateCrateVol()">
+        </div>
+        <div class="field-group">
+          <label>高 H (mm)</label>
+          <input type="number" id="c-h" value="800" min="1" placeholder="800" oninput="App.updateCrateVol()">
+        </div>
+      </div>
+      <div id="crate-vol-display" style="font-size:12px;color:#888;margin-top:4px"></div>
+      <div class="spec-actions-row">
+        <button class="btn-spec save-btn" onclick="App.saveCrateSpec()" title="将当前木箱尺寸保存到规格库">💾 保存尺寸</button>
+        <button class="btn-spec import-btn" onclick="App.showSpecManager('crate')" title="管理已保存的木箱尺寸">🗄️ 管理</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>
+        纸箱尺寸
+        <span class="section-action" style="display:flex;gap:4px">
+          <button class="btn btn-outline btn-sm" onclick="App.showSpecManager('box')" title="管理已保存的纸箱尺寸">🗄️ 管理</button>
+          <button class="btn btn-outline btn-sm" onclick="App.addBox()">+ 添加</button>
+        </span>
+      </h3>
+      <div id="box-list"></div>
+      <div id="box-list-empty" style="color:#bbb;font-size:12px;text-align:center;padding:8px 0;display:none">点击"添加"增加纸箱</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>计算选项</h3>
+      <div class="form-row two">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:4px">
+            留边空隙 (mm)
+            <span class="tip-icon" data-tip="四周及上下各留出的缓冲距离，两侧对称扣除。&#10;适用场景：&#10;• 纸箱装货后膨胀鼓包（建议 10~20mm）&#10;• 内壁有泡沫/纸板衬材（按衬材厚度填）&#10;• 需要装卸操作余量（建议 10mm）&#10;&#10;不填（0）= 紧贴木箱内壁计算">?</span>
+          </label>
+          <input type="number" id="opt-gap" value="0" min="0" placeholder="建议 10~20">
+        </div>
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:4px">
+            层间间距 (mm)
+            <span class="tip-icon" data-tip="每层纸箱之间的垂直间距。&#10;适用场景：&#10;• 层与层之间有纸板隔层（按隔板厚度，如 5mm）&#10;• 有托板或缓冲垫（按垫子厚度填）&#10;&#10;无隔板 = 填 0&#10;普通纸板隔层 ≈ 3~5mm">?</span>
+          </label>
+          <input type="number" id="opt-layer-gap" value="0" min="0" placeholder="无隔板填 0">
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="opt-rotate" checked style="cursor:pointer">
+        <label for="opt-rotate" style="font-size:13px;cursor:pointer;color:#444">允许旋转优化（自动尝试6种方向）</label>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px" id="strategy-row">
+        <label style="font-size:12px;color:#888;white-space:nowrap">优化策略</label>
+        <div class="mode-switch" style="flex:1">
+          <button class="mode-btn active" id="strategy-btn-count" onclick="App.setStrategy('count')">📊 数量优先</button>
+          <button class="mode-btn" id="strategy-btn-util" onclick="App.setStrategy('util')">📐 空间优先</button>
+        </div>
+        <span class="tip-icon" data-tip="数量优先：装入尽可能多的纸箱，适合发货最大化。&#10;空间优先：优先填满木箱空间，适合运费按体积计算。&#10;&#10;空间优先模式下，小纸箱不会无限填充，&#10;而是追求更高的空间利用率。">?</span>
+      </div>
+      <div style="margin-top:6px;display:flex;align-items:center;gap:8px" id="retry-row">
+        <label for="opt-retry" style="font-size:12px;color:#888;white-space:nowrap">混装重试次数</label>
+        <input type="number" id="opt-retry" value="10" min="1" max="50" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:3px 6px;font-size:12px;text-align:center">
+        <span class="tip-icon" data-tip="混装算法使用贪心策略，结果受纸箱排列顺序影响。&#10;增加重试次数会随机打乱顺序多次计算，&#10;取最优结果。&#10;建议 5~20 次，越多越可能找到更优解，&#10;但计算时间会相应增加。">?</span>
+      </div>
+    </div>
+
+    <div class="calc-btn-area">
+      <div id="calc-error" style="display:none"></div>
+      <button class="btn btn-primary" onclick="App.calculate()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+        开始计算
+      </button>
+    </div>
+  </div>
+
+  <!-- 右侧主区域 -->
+  <div class="main-view">
+    <div class="tabs" id="desktop-tabs">
+      <div class="tab active" data-tab="results" onclick="App.switchTab('results')">计算结果</div>
+      <div class="tab" data-tab="visual" onclick="App.switchTab('visual')">3D 可视化</div>
+      <div class="tab" data-tab="history" onclick="App.switchTab('history')">历史记录</div>
+    </div>
+
+    <div class="view-content">
+      <div class="view-panel active" id="panel-results">
+        <div id="results-content">
+          <div class="no-result">
+            <div class="nr-icon">📐</div>
+            <h3>等待计算</h3>
+            <p>在左侧填写木箱和纸箱尺寸，点击"开始计算"</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-panel three-panel" id="panel-visual">
+        <div id="three-canvas-wrap">
+          <div class="canvas-overlay" id="canvas-info">
+            <div>旋转: 拖动</div>
+            <div>缩放: 双指/滚轮</div>
+          </div>
+          <div id="legend-overlay" class="legend-overlay" style="display:none"></div>
+          <div class="box-hover-tooltip" id="box-hover-tooltip"></div>
+          <div class="canvas-hint">拖动旋转 · 双指缩放</div>
+        </div>
+        <div class="three-controls">
+          <div class="scheme-tabs" id="scheme-tabs">
+            <span style="font-size:12px;color:#bbb">请先计算</span>
+          </div>
+          <div class="view-btns">
+            <button class="view-btn" onclick="App.resetCamera()">重置视角</button>
+            <button class="view-btn" onclick="App.toggleWireframe()">线框</button>
+            <button class="view-btn" onclick="App.toggleCrateVis()">木箱</button>
+            <button class="view-btn" id="btn-orientation" onclick="App.toggleOrientationMarkers()">方向标</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-panel" id="panel-history">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h3 style="font-size:14px;font-weight:600;color:#333">历史计算记录</h3>
+          <button class="btn btn-sm btn-danger" onclick="App.clearHistoryConfirm()">清空历史</button>
+        </div>
+        <div id="history-list-content"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 移动端底部 Tab -->
+<div class="mobile-tab-bar" id="mobile-tab-bar">
+  <button class="mtab" onclick="App.openSidebar()"><span class="mtab-icon">⚙️</span>参数</button>
+  <button class="mtab active" data-mtab="results" onclick="App.switchTab('results')"><span class="mtab-icon">📊</span>结果</button>
+  <button class="mtab" data-mtab="visual" onclick="App.switchTab('visual')"><span class="mtab-icon">🎮</span>3D</button>
+  <button class="mtab" data-mtab="history" onclick="App.switchTab('history')"><span class="mtab-icon">🕰️</span>历史</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+// ============================================================
+// Module: AppState — 全局状态管理
+// ============================================================
+const AppState = (function() {
+  'use strict';
+  const BOX_COLORS = ['#4f9cf9','#52c41a','#fa8c16','#f759ab','#722ed1','#13c2c2','#ff4d4f','#a0d911'];
+
+  let boxes = [];
+  let boxIdCounter = 0;
+  let calcResults = [];
+  let mixResult = null;
+  let currentMode = 'single';
+  let currentSchemeIdx = 0;
+  let specManagerTab = 'box';
+  let mixStrategy = 'count'; // 'count' = 数量优先, 'util' = 空间优先
+
+  function addBox(l, w, h, name) {
+    const id = ++boxIdCounter;
+    const colorIdx = boxes.length % BOX_COLORS.length;
+    boxes.push({ id, l: l || '', w: w || '', h: h || '', name: name || '纸箱 ' + id, color: BOX_COLORS[colorIdx], qty: '', keepUpright: false });
+    return id;
+  }
+
+  function removeBox(id) { boxes = boxes.filter(b => b.id !== id); }
+
+  function getBoxValues() {
+    return boxes.map(b => {
+      const elL = document.getElementById('bl-' + b.id);
+      const elW = document.getElementById('bw-' + b.id);
+      const elH = document.getElementById('bh-' + b.id);
+      const elN = document.getElementById('bn-' + b.id);
+      const elQ = document.getElementById('bq-' + b.id);
+      const elKU = document.getElementById('bu-' + b.id);
+      const elC = document.getElementById('bc-' + b.id);
+      const l = elL && elL.value !== '' ? parseFloat(elL.value) : b.l;
+      const w = elW && elW.value !== '' ? parseFloat(elW.value) : b.w;
+      const h = elH && elH.value !== '' ? parseFloat(elH.value) : b.h;
+      const name = elN ? elN.value : b.name;
+      const qty = elQ ? elQ.value : (b.qty || '');
+      const keepUpright = elKU ? elKU.checked : (b.keepUpright || false);
+      const enabled = elC ? elC.checked : (b.enabled !== false);
+      return { ...b, l, w, h, name, qty, keepUpright, enabled };
+    });
+  }
+
+  function updateBoxName(id, name) {
+    const b = boxes.find(x => x.id === id);
+    if (b) b.name = name;
+  }
+
+  function toggleBoxEnabled(id, checked) {
+    const b = boxes.find(x => x.id === id);
+    if (b) {
+      b.enabled = checked;
+      // 更新样式
+      const el = document.getElementById('box-item-' + id);
+      if (el) {
+        el.classList.toggle('box-item-disabled', !checked);
+      }
+    }
+  }
+
+  function reset() {
+    boxes = []; boxIdCounter = 0; calcResults = []; mixResult = null;
+    currentMode = 'single'; currentSchemeIdx = 0;
+  }
+
+  return {
+    BOX_COLORS,
+    get boxes() { return boxes; },
+    set boxes(v) { boxes = v; },
+    get boxIdCounter() { return boxIdCounter; },
+    set boxIdCounter(v) { boxIdCounter = v; },
+    get calcResults() { return calcResults; },
+    set calcResults(v) { calcResults = v; },
+    get mixResult() { return mixResult; },
+    set mixResult(v) { mixResult = v; },
+    get currentMode() { return currentMode; },
+    set currentMode(v) { currentMode = v; },
+    get currentSchemeIdx() { return currentSchemeIdx; },
+    set currentSchemeIdx(v) { currentSchemeIdx = v; },
+    get specManagerTab() { return specManagerTab; },
+    set specManagerTab(v) { specManagerTab = v; },
+    get mixStrategy() { return mixStrategy; },
+    set mixStrategy(v) { mixStrategy = v; },
+    addBox, removeBox, getBoxValues, updateBoxName, toggleBoxEnabled, reset
+  };
+})();
+
+// ============================================================
+// Module: PackingEngine — 装箱算法
+// ============================================================
+const PackingEngine = (function() {
+  'use strict';
+
+  function getRotations(l, w, h, allowRotate, keepUpright) {
+    if (!allowRotate) return [[l, w, h]];
+    const rots = [[l, w, h], [l, h, w], [w, l, h], [w, h, l], [h, l, w], [h, w, l]];
+    const seen = new Set();
+    return rots.filter(r => {
+      if (keepUpright && r[2] !== h) return false;
+      const k = r.join(',');
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+  }
+
+  function calcPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, layerGap, allowRotate, keepUpright) {
+    const cL = crateL - gap * 2;
+    const cW = crateW - gap * 2;
+    const cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return null;
+
+    const rotations = getRotations(boxL, boxW, boxH, allowRotate, keepUpright);
+    let bestResult = null;
+
+    for (const [bL, bW, bH] of rotations) {
+      if (bL > cL || bW > cW || bH > cH) continue;
+
+      const xCount = Math.floor(cL / bL);
+      const yCount = Math.floor(cW / bW);
+      let zCount = 0, h = 0;
+      while (h + bH <= cH) {
+        zCount++;
+        h += bH;
+        if (zCount > 1 && layerGap > 0) h += layerGap;
+      }
+      let totalCount = xCount * yCount * zCount;
+      const positions = [];
+      const zhAtLevel = (z) => {
+        let zz = gap;
+        for (let i = 0; i < z; i++) { zz += bH; if (i < zCount - 1 && layerGap > 0) zz += layerGap; }
+        return zz;
+      };
+
+      for (let z = 0; z < zCount; z++) {
+        const zh = zhAtLevel(z);
+        for (let x = 0; x < xCount; x++) {
+          for (let y = 0; y < yCount; y++) {
+            positions.push({ x: gap + x * bL, y: gap + y * bW, z: zh, l: bL, w: bW, h: bH, rotated: false });
+          }
+        }
+      }
+
+      // X轴尾余填充（在X方向剩余空间内填充，Y方向占用整个宽度）
+      const remX = cL - xCount * bL;
+      if (remX > 0 && zCount > 0) {
+        let xFillBest = { count: 0 };
+        for (const [rbL, rbW, rbH] of rotations) {
+          if (rbH !== bH) continue;
+          if (rbL > remX || rbW > cW) continue;
+          const fx = Math.floor(remX / rbL), fy = Math.floor(cW / rbW);
+          const n = fx * fy * zCount;
+          if (n > xFillBest.count) xFillBest = { count: n, bL: rbL, bW: rbW, bH: rbH, fx, fy };
+        }
+        if (xFillBest.count > 0) {
+          totalCount += xFillBest.count;
+          const { bL: xbL, bW: xbW, bH: xbH, fx, fy } = xFillBest;
+          for (let z = 0; z < zCount; z++) {
+            const zh = zhAtLevel(z);
+            for (let x = 0; x < fx; x++) {
+              for (let y = 0; y < fy; y++) {
+                positions.push({ x: gap + xCount * bL + x * xbL, y: gap + y * xbW, z: zh, l: xbL, w: xbW, h: xbH, rotated: true });
+              }
+            }
+          }
+        }
+      }
+
+      // Y轴尾余填充（在Y方向剩余空间内填充，X方向只占用主排列区域）
+      const remY = cW - yCount * bW;
+      if (remY > 0 && zCount > 0) {
+        const yStripLen = xCount * bL;
+        let yFillBest = { count: 0 };
+        for (const [rbL, rbW, rbH] of rotations) {
+          if (rbH !== bH) continue;
+          if (rbL > yStripLen || rbW > remY) continue;
+          const fy = Math.floor(yStripLen / rbL), fx = Math.floor(remY / rbW);
+          const n = fx * fy * zCount;
+          if (n > yFillBest.count) yFillBest = { count: n, bL: rbL, bW: rbW, bH: rbH, fx, fy, flipped: true };
+        }
+        if (yFillBest.count > 0) {
+          totalCount += yFillBest.count;
+          const { bL: ybL, bW: ybW, bH: ybH, fx, fy } = yFillBest;
+          for (let z = 0; z < zCount; z++) {
+            const zh = zhAtLevel(z);
+            for (let x = 0; x < fy; x++) {
+              for (let y = 0; y < fx; y++) {
+                positions.push({ x: gap + x * ybL, y: gap + yCount * bW + y * ybW, z: zh, l: ybL, w: ybW, h: ybH, rotated: true });
+              }
+            }
+          }
+        }
+      }
+
+      const totalBoxVol = positions.reduce((s, p) => s + p.l * p.w * p.h, 0);
+      const utilRate = totalBoxVol / (cL * cW * cH);
+
+      if (!bestResult || totalCount > bestResult.count || (totalCount === bestResult.count && utilRate > bestResult.utilRate)) {
+        bestResult = {
+          count: totalCount, xCount, yCount, zCount, bL, bW, bH,
+          utilRate, positions,
+          isRotated: !(bL === boxL && bW === boxW && bH === boxH) || positions.some(p => p.rotated),
+          origL: boxL, origW: boxW, origH: boxH
+        };
+      }
+    }
+    return bestResult;
+  }
+
+  function splitSpaceFull(sp, px, py, pz, pl, pw, ph) {
+    const result = [];
+    if (sp.x + sp.l > px + pl) {
+      result.push({ x: px + pl, y: sp.y, z: sp.z, l: sp.x + sp.l - px - pl, w: sp.w, h: sp.h });
+    }
+    if (sp.y + sp.w > py + pw) {
+      result.push({ x: sp.x, y: py + pw, z: sp.z, l: pl, w: sp.y + sp.w - py - pw, h: sp.h });
+    }
+    if (sp.z + sp.h > pz + ph) {
+      result.push({ x: sp.x, y: sp.y, z: pz + ph, l: pl, w: pw, h: sp.z + sp.h - pz - ph });
+    }
+    return result.filter(s => s.l > 0 && s.w > 0 && s.h > 0);
+  }
+
+  // 单次混装计算（核心逻辑）
+  function calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, sortOrder) {
+    const cL = crateL - gap * 2;
+    const cW = crateW - gap * 2;
+    const cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return null;
+
+    const minX = gap, maxX = gap + cL;
+    const minY = gap, maxY = gap + cW;
+    const minZ = gap, maxZ = gap + cH;
+
+    const boxList = boxConfigs.map(bc => {
+      const keepUpright = bc.box.keepUpright === true;
+      const rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+      const validRots = rots.filter(r => r[0] <= cL && r[1] <= cW && r[2] <= cH);
+      return { ...bc, validRots, placed: 0 };
+    }).filter(bc => bc.validRots.length > 0);
+
+    if (boxList.length === 0) return { placed: [], totalCount: 0, utilRate: 0, breakdown: [] };
+
+    let spaces = [{ x: gap, y: gap, z: gap, l: cL, w: cW, h: cH }];
+    const placed = [];
+
+    // 使用传入的排序顺序
+    const sortedIndices = sortOrder || boxList.map((_, i) => i).sort((a, b) => {
+      const volA = boxList[a].box.l * boxList[a].box.w * boxList[a].box.h;
+      const volB = boxList[b].box.l * boxList[b].box.w * boxList[b].box.h;
+      return volB - volA;
+    });
+
+    let keepGoing = true;
+    let maxIterations = 5000;
+
+    while (keepGoing && maxIterations-- > 0) {
+      keepGoing = false;
+      for (const bi of sortedIndices) {
+        const bc = boxList[bi];
+        if (bc.qty !== null && bc.placed >= bc.qty) continue;
+        if (bc.validRots.length === 0) continue;
+
+        let bestSpaceIdx = -1, bestRot = null, bestScore = Infinity;
+
+        for (let si = 0; si < spaces.length; si++) {
+          const sp = spaces[si];
+          for (const rot of bc.validRots) {
+            const [rl, rw, rh] = rot;
+            if (rl <= sp.l && rw <= sp.w && rh <= sp.h) {
+              if (sp.x + rl > maxX || sp.y + rw > maxY || sp.z + rh > maxZ) continue;
+              const waste = sp.l * sp.w * sp.h - rl * rw * rh;
+              if (waste < bestScore) {
+                bestScore = waste;
+                bestSpaceIdx = si;
+                bestRot = rot;
+              }
+            }
+          }
+        }
+
+        if (bestSpaceIdx === -1) continue;
+
+        const sp = spaces[bestSpaceIdx];
+        const [rl, rw, rh] = bestRot;
+        const origDims = [bc.box.l, bc.box.w, bc.box.h];
+        const isRotated = !(rl === origDims[0] && rw === origDims[1] && rh === origDims[2]);
+
+        if (sp.x + rl > maxX + 0.01 || sp.y + rw > maxY + 0.01 || sp.z + rh > maxZ + 0.01) continue;
+
+        placed.push({
+          x: sp.x, y: sp.y, z: sp.z,
+          l: rl, w: rw, h: rh,
+          boxIdx: bi,
+          color: bc.box.color,
+          name: bc.box.name,
+          rotated: isRotated
+        });
+        bc.placed++;
+        keepGoing = true;
+
+        spaces.splice(bestSpaceIdx, 1);
+        const newSpaces = splitSpaceFull(sp, sp.x, sp.y, sp.z, rl, rw, rh);
+        spaces.push(...newSpaces);
+        spaces.sort((a, b) => (b.l * b.w * b.h) - (a.l * a.w * a.h));
+        break;
+      }
+    }
+
+    const validPlaced = placed.filter(p => {
+      const inX = p.x >= minX && p.x + p.l <= maxX;
+      const inY = p.y >= minY && p.y + p.w <= maxY;
+      const inZ = p.z >= minZ && p.z + p.h <= maxZ;
+      if (!inX || !inY || !inZ) {
+        const bc = boxList[p.boxIdx];
+        if (bc) bc.placed--;
+        return false;
+      }
+      return true;
+    });
+
+    const totalVol = cL * cW * cH;
+    const usedVol = validPlaced.reduce((s, p) => s + p.l * p.w * p.h, 0);
+    const breakdown = boxList.map((bc, i) => ({
+      box: bc.box, count: bc.placed, requested: bc.qty
+    }));
+
+    return {
+      placed: validPlaced,
+      totalCount: validPlaced.length,
+      utilRate: usedVol / totalVol,
+      breakdown,
+      crateL_raw: crateL, crateW_raw: crateW, crateH_raw: crateH,
+      crateL: cL, crateW: cW, crateH: cH,
+      hasRotation: placed.some(p => p.rotated),
+      gap
+    };
+  }
+
+  // 智能组合探索器：对无数量限制的2-3种纸箱枚举数量组合
+  function exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate) {
+    const cL = crateL - gap * 2;
+    const cW = crateW - gap * 2;
+    const cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return null;
+
+    const totalVol = cL * cW * cH;
+
+    // 构建纸箱列表，排除有数量限制的
+    const freeBoxes = [];
+    const constrainedBoxes = [];
+    boxConfigs.forEach((bc, i) => {
+      const keepUpright = bc.box.keepUpright === true;
+      const rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+      const validRots = rots.filter(r => r[0] <= cL && r[1] <= cW && r[2] <= cH);
+      if (validRots.length === 0) return;
+      const entry = { origIdx: i, bc, validRots, boxVol: bc.box.l * bc.box.w * bc.box.h };
+      if (bc.qty === null) {
+        freeBoxes.push(entry);
+      } else {
+        constrainedBoxes.push(entry);
+      }
+    });
+
+    // 只有2-3种无限制纸箱时才有组合搜索价值
+    if (freeBoxes.length < 2 || freeBoxes.length > 3) return null;
+
+    // 对每种自由纸箱，计算理论上能放的最大数量（按体积估算上限）
+    const maxCounts = freeBoxes.map(fb => {
+      // 用简单排列估算最大数量
+      let maxByDim = 0;
+      for (const [rl, rw, rh] of fb.validRots) {
+        const cnt = Math.floor(cL / rl) * Math.floor(cW / rw) * Math.floor(cH / rh);
+        if (cnt > maxByDim) maxByDim = cnt;
+      }
+      return Math.min(maxByDim, Math.floor(totalVol / fb.boxVol * 0.85)); // 85%理论上限
+    });
+
+    // 按体积从大到小排序（大的纸箱优先放置）
+    const sortedFree = freeBoxes.map((fb, i) => ({ ...fb, maxCount: maxCounts[i] }))
+      .sort((a, b) => b.boxVol - a.boxVol);
+
+    // 搜索步长：根据最大数量自适应
+    const totalMax = sortedFree.reduce((s, fb) => s + fb.maxCount, 0);
+    const stepSize = totalMax <= 30 ? 1 : totalMax <= 80 ? 2 : totalMax <= 200 ? 4 : 8;
+
+    let bestResult = null;
+
+    // 对每种纸箱找最优旋转方向（体积最大的方向）以及各方向的排列数
+    sortedFree.forEach(fb => {
+      let bestRotVol = 0;
+      fb.bestRot = fb.validRots[0];
+      fb.bestRotLayout = { xCount: 0, yCount: 0, zCount: 0, total: 0 };
+      for (const rot of fb.validRots) {
+        const v = rot[0] * rot[1] * rot[2];
+        const xc = Math.floor(cL / rot[0]);
+        const yc = Math.floor(cW / rot[1]);
+        const zc = Math.floor(cH / rot[2]);
+        const total = xc * yc * zc;
+        if (v > bestRotVol) {
+          bestRotVol = v;
+          fb.bestRot = rot;
+          fb.bestRotLayout = { xCount: xc, yCount: yc, zCount: zc, total };
+        }
+      }
+    });
+
+    // 计算每种纸箱单独装满时的上限（考虑排列约束，不只是体积）
+    // 使用最佳旋转方向的排列数作为更准确的上限
+    sortedFree.forEach(fb => {
+      const layoutMax = fb.bestRotLayout.total;
+      const volMax = Math.floor(totalVol / fb.boxVol * 0.85);
+      fb.maxCount = Math.min(layoutMax, volMax);
+    });
+
+    // 二维/三维组合搜索
+    if (sortedFree.length === 2) {
+      const [a, b] = sortedFree;
+      for (let ca = 0; ca <= a.maxCount; ca += stepSize) {
+        for (let cb = 0; cb <= b.maxCount; cb += stepSize) {
+          const usedVol = ca * a.boxVol + cb * b.boxVol;
+          if (usedVol > totalVol) continue;
+          const utilRate = usedVol / totalVol;
+          if (!bestResult || utilRate > bestResult.utilRate) {
+            bestResult = {
+              counts: [ca, cb],
+              totalCount: ca + cb,
+              utilRate,
+              boxes: [a, b]
+            };
+          }
+        }
+      }
+    } else if (sortedFree.length === 3) {
+      const [a, b, c] = sortedFree;
+      // 3种纸箱搜索，用更大的步长避免过慢
+      const step3 = totalMax <= 50 ? 1 : totalMax <= 150 ? 2 : 4;
+      for (let ca = 0; ca <= a.maxCount; ca += step3) {
+        for (let cb = 0; cb <= b.maxCount; cb += step3) {
+          const volAB = ca * a.boxVol + cb * b.boxVol;
+          if (volAB > totalVol) continue;
+          // c 的数量可以直接算出上限
+          const maxC = Math.floor((totalVol - volAB) / c.boxVol);
+          const cc = Math.min(maxC, c.maxCount);
+          const usedVol = volAB + cc * c.boxVol;
+          if (usedVol > totalVol) continue;
+          const utilRate = usedVol / totalVol;
+          if (!bestResult || utilRate > bestResult.utilRate) {
+            bestResult = {
+              counts: [ca, cb, cc],
+              totalCount: ca + cb + cc,
+              utilRate,
+              boxes: [a, b, c]
+            };
+          }
+        }
+      }
+    }
+
+    if (!bestResult || bestResult.totalCount === 0) return null;
+
+    // 对最优组合，尝试实际放置验证
+    // 按最优数量构建有序的放置列表，用贪心实际放置
+    const targetCounts = {};
+    sortedFree.forEach((fb, i) => {
+      targetCounts[fb.origIdx] = bestResult.counts[i];
+    });
+
+    // 尝试多种放置序列，取实际能放下的最优结果
+    function tryPlaceSequence(sequence) {
+      const boxList = boxConfigs.map(bc => {
+        const keepUpright = bc.box.keepUpright === true;
+        const rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+        const validRots = rots.filter(r => r[0] <= cL && r[1] <= cW && r[2] <= cH);
+        return { ...bc, validRots, placed: 0 };
+      });
+
+      const targets = {};
+      sortedFree.forEach((fb, i) => { targets[fb.origIdx] = bestResult.counts[i]; });
+      constrainedBoxes.forEach(cb => { targets[cb.origIdx] = cb.bc.qty; });
+
+      let sps = [{ x: gap, y: gap, z: gap, l: cL, w: cW, h: cH }];
+      const placed = [];
+      const mnX = gap, mxX = gap + cL;
+      const mnY = gap, mxY = gap + cW;
+      const mnZ = gap, mxZ = gap + cH;
+      let iter = 5000;
+
+      const allIdx = [...constrainedBoxes.map(cb => cb.origIdx), ...sequence];
+
+      for (const bi of allIdx) {
+        if (iter-- < 0) break;
+        const bc = boxList[bi];
+        if (!bc || bc.validRots.length === 0) continue;
+        const target = targets[bi];
+        if (target !== undefined && bc.placed >= target) continue;
+
+        let bestSi = -1, bestRt = null, bestSc = Infinity;
+        for (let si = 0; si < sps.length; si++) {
+          const sp = sps[si];
+          for (const rot of bc.validRots) {
+            const [rl, rw, rh] = rot;
+            if (rl <= sp.l && rw <= sp.w && rh <= sp.h) {
+              if (sp.x + rl > mxX || sp.y + rw > mxY || sp.z + rh > mxZ) continue;
+              const waste = sp.l * sp.w * sp.h - rl * rw * rh;
+              if (waste < bestSc) { bestSc = waste; bestSi = si; bestRt = rot; }
+            }
+          }
+        }
+        if (bestSi === -1) continue;
+
+        const sp = sps[bestSi];
+        const [rl, rw, rh] = bestRt;
+        placed.push({ x: sp.x, y: sp.y, z: sp.z, l: rl, w: rw, h: rh, boxIdx: bi, color: bc.box.color, name: bc.box.name, rotated: !(rl === bc.box.l && rw === bc.box.w && rh === bc.box.h), origL: bc.box.l, origW: bc.box.w, origH: bc.box.h });
+        bc.placed++;
+        sps.splice(bestSi, 1);
+        sps.push(...splitSpaceFull(sp, sp.x, sp.y, sp.z, rl, rw, rh));
+        sps.sort((a, b) => (b.l * b.w * b.h) - (a.l * a.w * a.h));
+      }
+
+      const vp = placed.filter(p => {
+        const ok = p.x >= mnX && p.x + p.l <= mxX && p.y >= mnY && p.y + p.w <= mxY && p.z >= mnZ && p.z + p.h <= mxZ;
+        if (!ok) { const bc = boxList[p.boxIdx]; if (bc) bc.placed--; }
+        return ok;
+      });
+
+      const uv = vp.reduce((s, p) => s + p.l * p.w * p.h, 0);
+      const bd = boxList.map((bc, i) => ({ box: bc.box, count: bc.placed, requested: bc.qty }));
+      return { placed: vp, totalCount: vp.length, utilRate: uv / totalVol, breakdown: bd, hasRotation: vp.some(p => p.rotated) };
+    }
+
+    // 生成多种放置序列并取最优
+    const countArray = bestResult.counts;
+    
+    // 序列1: 交替放置（大小大小...）
+    const seq1 = [];
+    const rem1 = countArray.slice();
+    let tr1 = rem1.reduce((s, c) => s + c, 0);
+    while (tr1 > 0) {
+      let ok = false;
+      for (let i = 0; i < rem1.length; i++) {
+        if (rem1[i] > 0) { seq1.push(sortedFree[i].origIdx); rem1[i]--; tr1--; ok = true; }
+      }
+      if (!ok) break;
+    }
+
+    // 序列2: 先大后小（按体积降序逐个放完）
+    const seq2 = [];
+    for (let i = 0; i < countArray.length; i++) {
+      for (let j = 0; j < countArray[i]; j++) seq2.push(sortedFree[i].origIdx);
+    }
+
+    // 序列3: 先小后大
+    const seq3 = [];
+    for (let i = countArray.length - 1; i >= 0; i--) {
+      for (let j = 0; j < countArray[i]; j++) seq3.push(sortedFree[i].origIdx);
+    }
+
+    // 序列4: 交替反向（小大小大...）
+    const seq4 = [];
+    const rem4 = countArray.slice();
+    let tr4 = rem4.reduce((s, c) => s + c, 0);
+    while (tr4 > 0) {
+      let ok = false;
+      for (let i = rem4.length - 1; i >= 0; i--) {
+        if (rem4[i] > 0) { seq4.push(sortedFree[i].origIdx); rem4[i]--; tr4--; ok = true; }
+      }
+      if (!ok) break;
+    }
+
+    const sequences = [seq1, seq2, seq3, seq4];
+    let bestActual = null;
+
+    for (const seq of sequences) {
+      const result = tryPlaceSequence(seq);
+      if (!bestActual || result.utilRate > bestActual.utilRate) {
+        bestActual = result;
+      }
+    }
+
+    if (!bestActual || bestActual.totalCount === 0) return null;
+
+    return {
+      ...bestActual,
+      crateL_raw: crateL, crateW_raw: crateW, crateH_raw: crateH,
+      crateL: cL, crateW: cW, crateH: cH,
+      gap
+    };
+  }
+
+  // 混装多轮重试（增强版，支持数量优先/空间优先策略 + 智能组合探索）
+  function calcMixedPacking(crateL, crateW, crateH, boxConfigs, gap, allowRotate, retryCount, strategy) {
+    // 只有1种纸箱且无数量限制时，直接使用单品模式的网格层叠算法
+    // 因为空间分割算法对单一尺寸纸箱不如网格对齐+尾余填充算法高效
+    const unconstrainedBoxes = boxConfigs.filter(bc => bc.qty === null);
+    if (boxConfigs.length === 1 && unconstrainedBoxes.length === 1) {
+      const bc = boxConfigs[0];
+      const keepUpright = bc.box.keepUpright === true;
+      const singleResult = calcPacking(crateL, crateW, crateH, bc.box.l, bc.box.w, bc.box.h, gap, 0, allowRotate, keepUpright);
+      if (singleResult) {
+        // 转换为混装模式的结果格式
+        singleResult.positions.forEach(p => {
+          p.boxIdx = 0;
+          p.color = bc.box.color;
+          p.name = bc.box.name;
+        });
+        return {
+          placed: singleResult.positions,
+          totalCount: singleResult.count,
+          utilRate: singleResult.utilRate,
+          breakdown: [{ box: bc.box, count: singleResult.count, requested: null }],
+          crateL_raw: crateL, crateW_raw: crateW, crateH_raw: crateH,
+          crateL: crateL - gap * 2, crateW: crateW - gap * 2, crateH: crateH - gap * 2,
+          hasRotation: singleResult.isRotated,
+          gap
+        };
+      }
+      return null;
+    }
+
+    const rounds = Math.max(1, Math.min(50, retryCount || 10));
+    const isUtilStrategy = strategy === 'util';
+
+    // 第一轮：体积降序（默认策略）
+    let bestResult = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, null);
+    if (!bestResult || bestResult.totalCount === 0) return bestResult;
+
+    // 空间优先模式：尝试智能组合探索（适用于2-3种无数量限制纸箱）
+    if (isUtilStrategy) {
+      const freeBoxCount = boxConfigs.filter(bc => bc.qty === null).length;
+      if (freeBoxCount >= 2 && freeBoxCount <= 3) {
+        const explorerResult = exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate);
+        if (explorerResult && explorerResult.totalCount > 0) {
+          if (explorerResult.utilRate > bestResult.utilRate) {
+            bestResult = explorerResult;
+          }
+        }
+      }
+    }
+
+    // 后续轮次：随机打乱顺序
+    const boxIndices = boxConfigs.map((_, i) => i);
+    for (let r = 1; r < rounds; r++) {
+      // Fisher-Yates 洗牌
+      const shuffled = [...boxIndices];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      // 还需要按体积降序的变体：先打乱同体积段再试
+      const shuffledByVol = [...boxIndices].sort((a, b) => {
+        const volA = boxConfigs[a].box.l * boxConfigs[a].box.w * boxConfigs[a].box.h;
+        const volB = boxConfigs[b].box.l * boxConfigs[b].box.w * boxConfigs[b].box.h;
+        if (Math.abs(volA - volB) < 100) return Math.random() - 0.5;
+        return volB - volA;
+      });
+
+      const candidate = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, shuffledByVol);
+      if (!candidate) continue;
+
+      if (isUtilStrategy) {
+        // 空间优先：利用率优先，利用率相同时才比较数量
+        if (candidate.utilRate > bestResult.utilRate + 0.0001) {
+          bestResult = candidate;
+        } else if (Math.abs(candidate.utilRate - bestResult.utilRate) < 0.0001 && candidate.totalCount > bestResult.totalCount) {
+          bestResult = candidate;
+        }
+      } else {
+        // 数量优先：数量优先，数量相同时比较利用率
+        if (candidate.totalCount > bestResult.totalCount) {
+          bestResult = candidate;
+        } else if (candidate.totalCount === bestResult.totalCount && candidate.utilRate > bestResult.utilRate) {
+          bestResult = candidate;
+        }
+      }
+    }
+
+    return bestResult;
+  }
+
+  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations };
+})();
+
+// ============================================================
+// Module: StorageManager — 本地存储管理
+// ============================================================
+const StorageManager = (function() {
+  'use strict';
+  const KEY_BOX = 'box-calc-saved-box-specs';
+  const KEY_CRATE = 'box-calc-saved-crate-specs';
+  const KEY_HISTORY = 'box-calc-history';
+
+  function loadBoxSpecs() {
+    try { return JSON.parse(localStorage.getItem(KEY_BOX) || '[]'); }
+    catch(e) { return []; }
+  }
+
+  function saveBoxSpecs(specs) {
+    localStorage.setItem(KEY_BOX, JSON.stringify(specs));
+  }
+
+  function loadCrateSpecs() {
+    try { return JSON.parse(localStorage.getItem(KEY_CRATE) || '[]'); }
+    catch(e) { return []; }
+  }
+
+  function saveCrateSpecs(specs) {
+    localStorage.setItem(KEY_CRATE, JSON.stringify(specs));
+  }
+
+  function saveHistory(entry) {
+    let hist = loadHistoryRaw();
+    hist.unshift(entry);
+    if (hist.length > 50) hist = hist.slice(0, 50);
+    try { localStorage.setItem(KEY_HISTORY, JSON.stringify(hist)); } catch(e) {}
+  }
+
+  function loadHistoryRaw() {
+    try { return JSON.parse(localStorage.getItem(KEY_HISTORY) || '[]'); } catch(e) { return []; }
+  }
+
+  function deleteHistory(idx) {
+    let hist = loadHistoryRaw();
+    hist.splice(idx, 1);
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(hist));
+  }
+
+  function clearHistory() {
+    localStorage.removeItem(KEY_HISTORY);
+  }
+
+  return { loadBoxSpecs, saveBoxSpecs, loadCrateSpecs, saveCrateSpecs, saveHistory, loadHistoryRaw, deleteHistory, clearHistory };
+})();
+
+// ============================================================
+// Module: Visualizer3D — 3D 可视化
+// ============================================================
+const Visualizer3D = (function() {
+  'use strict';
+  let scene, camera, renderer, crateGroup, boxGroup;
+  let threeWrap;
+  const SCALE = 1 / 100;
+  let wireframeMode = false, crateVisible = true, orientationMarkers = true;
+
+  let isMouseDown = false, isRightDown = false;
+  let lastMouse = { x: 0, y: 0 };
+  let spherical = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 22 };
+  let target = new THREE.Vector3(0, 0, 0);
+  let panOffset = new THREE.Vector3();
+
+  // Raycaster hover 检测
+  let raycaster, hoverMouse;
+  let instancedMeshMeta = []; // { mesh, meta[] } — 每个 InstancedMesh 附带每个实例的元数据
+  let hoverTooltipEl;
+
+  // 触摸支持
+  let touchStartDist = 0;
+  let touchStartSpherical = null;
+  let touchCount = 0;
+
+  function init() {
+    if (renderer) return;
+    threeWrap = document.getElementById('three-canvas-wrap');
+    const w = threeWrap.clientWidth || 800;
+    const h = threeWrap.clientHeight || 500;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1e2e);
+
+    camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 10000);
+    camera.position.set(12, 10, 18);
+    camera.lookAt(0, 0, 0);
+
+    // 初始化 Raycaster 和 hover 相关
+    raycaster = new THREE.Raycaster();
+    hoverMouse = new THREE.Vector2();
+    hoverTooltipEl = document.getElementById('box-hover-tooltip');
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    threeWrap.appendChild(renderer.domElement);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0x6080ff, 0.3);
+    fillLight.position.set(-10, 5, -10);
+    scene.add(fillLight);
+
+    const grid = new THREE.GridHelper(30, 30, 0x2a3050, 0x252a3d);
+    scene.add(grid);
+
+    crateGroup = new THREE.Group();
+    boxGroup = new THREE.Group();
+    scene.add(crateGroup);
+    scene.add(boxGroup);
+
+    setupControls();
+    animate();
+
+    window.addEventListener('resize', () => {
+      if (!threeWrap) return;
+      const w2 = threeWrap.clientWidth, h2 = threeWrap.clientHeight;
+      if (w2 > 0 && h2 > 0) {
+        camera.aspect = w2 / h2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w2, h2);
+      }
+    });
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (renderer && scene && camera) renderer.render(scene, camera);
+  }
+
+  function setupControls() {
+    const canvas = renderer.domElement;
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    // 鼠标事件
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 0) isMouseDown = true;
+      if (e.button === 2) isRightDown = true;
+      lastMouse = { x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener('mouseup', () => { isMouseDown = false; isRightDown = false; });
+    window.addEventListener('mousemove', e => {
+      if (!isMouseDown && !isRightDown) return;
+      const dx = e.clientX - lastMouse.x, dy = e.clientY - lastMouse.y;
+      lastMouse = { x: e.clientX, y: e.clientY };
+      if (isMouseDown) {
+        spherical.theta -= dx * 0.005;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - dy * 0.005));
+        updateCamera();
+      }
+      if (isRightDown) {
+        const right = new THREE.Vector3();
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();
+        panOffset.addScaledVector(right, -dx * 0.02);
+        panOffset.addScaledVector(camera.up, dy * 0.02);
+        updateCamera();
+      }
+    });
+
+    // Hover 检测 — 独立 mousemove，不在拖拽时触发
+    canvas.addEventListener('mousemove', e => {
+      if (isMouseDown || isRightDown) return;
+      handleHover(e);
+    });
+    canvas.addEventListener('mouseleave', () => {
+      hideHoverTooltip();
+    });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      spherical.radius = Math.max(2, Math.min(200, spherical.radius + e.deltaY * 0.02));
+      updateCamera();
+    }, { passive: false });
+
+    // 触摸事件
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      touchCount = e.touches.length;
+      if (touchCount === 1) {
+        isMouseDown = true;
+        lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (touchCount === 2) {
+        isMouseDown = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchStartDist = Math.sqrt(dx * dx + dy * dy);
+        touchStartSpherical = { ...spherical };
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isMouseDown) {
+        const dx = e.touches[0].clientX - lastMouse.x;
+        const dy = e.touches[0].clientY - lastMouse.y;
+        lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        spherical.theta -= dx * 0.005;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - dy * 0.005));
+        updateCamera();
+      } else if (e.touches.length === 2 && touchStartSpherical) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (touchStartDist > 0) {
+          spherical.radius = Math.max(2, Math.min(200, touchStartSpherical.radius * (touchStartDist / dist)));
+          updateCamera();
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+      isMouseDown = false;
+      touchStartDist = 0;
+      touchStartSpherical = null;
+      touchCount = 0;
+    });
+  }
+
+  function updateCamera() {
+    if (!camera) return;
+    const t = panOffset.clone().add(target);
+    camera.position.set(
+      t.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta),
+      t.y + spherical.radius * Math.cos(spherical.phi),
+      t.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta)
+    );
+    camera.lookAt(t);
+  }
+
+  function resetCamera() {
+    spherical = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 22 };
+    panOffset.set(0, 0, 0);
+    updateCamera();
+  }
+
+  function toggleWireframe() {
+    wireframeMode = !wireframeMode;
+    if (boxGroup) boxGroup.traverse(obj => { if (obj.isMesh && obj.material) obj.material.wireframe = wireframeMode; });
+  }
+
+  function toggleCrateVis() {
+    crateVisible = !crateVisible;
+    if (crateGroup) crateGroup.visible = crateVisible;
+  }
+
+  function toggleOrientationMarkers() {
+    orientationMarkers = !orientationMarkers;
+    // 重新渲染当前场景以应用/移除标记
+    const S = AppState;
+    if (S.currentMode === 'single' && S.calcResults.length > 0) {
+      renderSingleScene(S.calcResults[S.currentSchemeIdx]);
+    } else if (S.currentMode === 'mixed' && S.mixResult) {
+      renderMixedScene(S.mixResult);
+    }
+  }
+
+  // 根据旋转后的尺寸，计算原始模型的3D旋转角度
+  // 原始模型: BoxGeometry(origL, origH, origW)，方向标在Y+顶面
+  // 需要旋转后使模型在X/Y/Z轴的尺寸变为 curL/curH/curW
+  // 返回 { rotX, rotY, rotZ } 欧拉角(弧度)
+  function getBoxRotation(origL, origW, origH, curL, curW, curH) {
+    // 不旋转的情况
+    if (curL === origL && curW === origW && curH === origH) {
+      return { rotX: 0, rotY: 0, rotZ: 0 };
+    }
+
+    // 原始轴到当前轴的映射
+    // 原始: X=origL, Y=origH, Z=origW
+    // 当前: X=curL, Y=curH, Z=curW
+
+    // 找出 curL 来自原始哪个轴
+    let srcX, srcY, srcZ;
+    if (curL === origL) srcX = 'x';
+    else if (curL === origW) srcX = 'z';
+    else srcX = 'y'; // curL === origH
+
+    if (curH === origH) srcY = 'y';
+    else if (curH === origL) srcY = 'x';
+    else srcY = 'z'; // curH === origW
+
+    if (curW === origW) srcZ = 'z';
+    else if (curW === origL) srcZ = 'x';
+    else srcZ = 'y'; // curW === origH
+
+    // 根据轴映射确定旋转
+    // 使用欧拉角：绕X轴(roll), 绕Y轴(yaw), 绕Z轴(pitch)
+    let rotX = 0, rotY = 0, rotZ = 0;
+
+    if (srcY === 'y') {
+      // Y轴不变，只有XZ面的旋转（绕Y轴旋转）
+      if (srcX === 'x' && srcZ === 'z') { rotY = 0; }          // 不变
+      else if (srcX === 'z' && srcZ === 'x') { rotY = Math.PI / 2; } // X↔Z交换：绕Y转90°
+    } else if (srcY === 'x') {
+      // 原始Y变成了当前X → 绕Z轴转-90°
+      rotZ = -Math.PI / 2;
+      if (srcZ === 'z') { /* Y→X, X→Y, Z不变: 绕Z转-90° */ }
+      else if (srcZ === 'y') { rotX = Math.PI / 2; } // Y→X, Z→Y, X→Z
+    } else if (srcY === 'z') {
+      // 原始Y变成了当前Z → 绕X轴转90°
+      rotX = Math.PI / 2;
+      if (srcX === 'x') { /* Y→Z, X不变, Z→Y: 绕X转90° */ }
+      else if (srcX === 'y') { rotZ = Math.PI / 2; } // Y→Z, Z→X, X→Y
+    }
+
+    // 更精确的处理：直接根据轴映射构建旋转矩阵逻辑
+    // 简化方案：根据常见的6种排列直接匹配
+    // [origL, origW, origH] → [curL, curW, curH]
+
+    // 使用简单的查找表
+    const key = `${curL},${curW},${curH}`;
+    const rotations = {};
+
+    // 情况1: [l, w, h] — 不变
+    rotations[`${origL},${origW},${origH}`] = [0, 0, 0];
+
+    // 情况2: [l, h, w] — 绕X轴旋转，Y和Z交换 (原始顶面→前面)
+    rotations[`${origL},${origH},${origW}`] = [Math.PI / 2, 0, 0];
+
+    // 情况3: [w, l, h] — 绕Y轴旋转90°，X和Z交换 (原始顶面仍为顶面，但长宽交换)
+    rotations[`${origW},${origL},${origH}`] = [0, Math.PI / 2, 0];
+
+    // 情况4: [w, h, l] — 原始X→Z, 原始Y→X, 原始Z→Y
+    rotations[`${origW},${origH},${origL}`] = [0, Math.PI / 2, Math.PI / 2];
+
+    // 情况5: [h, l, w] — 原始X→Y, 原始Y→Z, 原始Z→X
+    rotations[`${origH},${origL},${origW}`] = [Math.PI / 2, 0, Math.PI / 2];
+
+    // 情况6: [h, w, l] — 原始X→Y, 原始Y→X, 原始Z→Z (绕Z轴转90°)
+    rotations[`${origH},${origW},${origL}`] = [0, 0, Math.PI / 2];
+
+    if (rotations[key]) {
+      return { rotX: rotations[key][0], rotY: rotations[key][1], rotZ: rotations[key][2] };
+    }
+
+    return { rotX: 0, rotY: 0, rotZ: 0 };
+  }
+
+  // 创建纸箱完整模型：原始尺寸的BoxGeometry + 方向标在原始顶面(Y+)
+  // origL, origW, origH 是原始尺寸(未乘SCALE)
+  // color 是 THREE.Color
+  // withMarker: 是否包含方向标
+  function createBoxModel(origL, origW, origH, color, withMarker) {
+    const group = new THREE.Group();
+    const s = SCALE;
+    const bL = origL * s, bW = origW * s, bH = origH * s;
+
+    // 纸箱主体
+    const boxGeom = new THREE.BoxGeometry(bL - 0.05, bH - 0.05, bW - 0.05);
+    const boxMat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.95, roughness: 0.6, metalness: 0.1 });
+    const boxMesh = new THREE.Mesh(boxGeom, boxMat);
+    boxMesh.castShadow = true;
+    group.add(boxMesh);
+
+    // 线框
+    const edgeGeom = new THREE.EdgesGeometry(new THREE.BoxGeometry(bL - 0.03, bH - 0.03, bW - 0.03));
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+    const edgeLine = new THREE.LineSegments(edgeGeom, edgeMat);
+    group.add(edgeLine);
+
+    // 方向标（在原始顶面 Y+ 上方悬浮，避免与顶面重合）
+    if (withMarker) {
+      const radius = Math.min(bL, bW) * 0.14;
+      const floatOffset = 0.06; // 悬浮在顶面上方
+
+      // 白色填充圆（底层）
+      const whiteShape = new THREE.Shape();
+      whiteShape.absarc(0, 0, radius + 0.025, 0, Math.PI * 2, false);
+      const whiteGeom = new THREE.ShapeGeometry(whiteShape);
+      const whiteMesh = new THREE.Mesh(whiteGeom, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      whiteMesh.rotation.x = -Math.PI / 2;
+      whiteMesh.position.y = bH / 2 + floatOffset;
+      group.add(whiteMesh);
+
+      // 黑色实心圆
+      const circleShape = new THREE.Shape();
+      circleShape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+      const circleGeom = new THREE.ShapeGeometry(circleShape);
+      const circleMesh = new THREE.Mesh(circleGeom, new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      circleMesh.rotation.x = -Math.PI / 2;
+      circleMesh.position.y = bH / 2 + floatOffset + 0.002;
+      group.add(circleMesh);
+
+      // 白色细描边
+      const outlineShape = new THREE.Shape();
+      outlineShape.absarc(0, 0, radius + 0.015, 0, Math.PI * 2, false);
+      const holePath = new THREE.Path();
+      holePath.absarc(0, 0, radius - 0.01, 0, Math.PI * 2, true);
+      outlineShape.holes.push(holePath);
+      const outlineGeom = new THREE.ShapeGeometry(outlineShape);
+      const outlineMesh = new THREE.Mesh(outlineGeom, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      outlineMesh.rotation.x = -Math.PI / 2;
+      outlineMesh.position.y = bH / 2 + floatOffset + 0.002;
+      group.add(outlineMesh);
+    }
+
+    return group;
+  }
+
+  function clearScene() {
+    if (!scene) return;
+    while (crateGroup.children.length) crateGroup.remove(crateGroup.children[0]);
+    while (boxGroup.children.length) boxGroup.remove(boxGroup.children[0]);
+    instancedMeshMeta = [];
+    hideHoverTooltip();
+  }
+
+  // Hover 检测：用 Raycaster 检测 InstancedMesh，通过 instanceId 找到对应纸箱元数据
+  function handleHover(e) {
+    if (!raycaster || !camera || !threeWrap) return;
+    const rect = threeWrap.getBoundingClientRect();
+    hoverMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    hoverMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(hoverMouse, camera);
+
+    // 只检测 boxGroup 下的 InstancedMesh（排除 crate、边框线、方向标等）
+    const meshes = instancedMeshMeta.map(m => m.mesh);
+    const intersects = raycaster.intersectObjects(meshes, false);
+
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      const mesh = hit.object;
+      const instanceId = hit.instanceId;
+      if (instanceId === undefined) { hideHoverTooltip(); return; }
+
+      // 找到对应的元数据
+      const metaEntry = instancedMeshMeta.find(m => m.mesh === mesh);
+      if (!metaEntry || instanceId >= metaEntry.meta.length) { hideHoverTooltip(); return; }
+
+      const info = metaEntry.meta[instanceId];
+      showHoverTooltip(e.clientX, e.clientY, info);
+    } else {
+      hideHoverTooltip();
+    }
+  }
+
+  function showHoverTooltip(clientX, clientY, info) {
+    if (!hoverTooltipEl) return;
+    const nameHtml = info.name ? '<div class="ht-name">' + escapeHtml(info.name) + '</div>' : '';
+    const rotatedHtml = info.rotated ? '<div class="ht-rotated">↻ 旋转放置</div>' : '';
+    hoverTooltipEl.innerHTML = nameHtml +
+      '<div class="ht-dims">长(L): ' + info.l + 'mm &nbsp; 宽(W): ' + info.w + 'mm &nbsp; 高(H): ' + info.h + 'mm</div>' +
+      rotatedHtml;
+
+    // 定位 tooltip，避免超出屏幕
+    const rect = hoverTooltipEl.getBoundingClientRect();
+    let left = clientX + 15;
+    let top = clientY + 10;
+    if (left + 200 > window.innerWidth) left = clientX - 210;
+    if (top + 60 > window.innerHeight) top = clientY - 70;
+    hoverTooltipEl.style.left = left + 'px';
+    hoverTooltipEl.style.top = top + 'px';
+    hoverTooltipEl.classList.add('visible');
+  }
+
+  function hideHoverTooltip() {
+    if (hoverTooltipEl) hoverTooltipEl.classList.remove('visible');
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function drawCrate(cL, cW, cH) {
+    const s = SCALE;
+    const geom = new THREE.BoxGeometry(cL * s, cH * s, cW * s);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8b6914, transparent: true, opacity: 0.12, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.set(cL * s / 2, cH * s / 2, cW * s / 2);
+    crateGroup.add(mesh);
+    const edges = new THREE.EdgesGeometry(geom);
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xd4a017 }));
+    line.position.copy(mesh.position);
+    crateGroup.add(line);
+  }
+
+  function setCamera(cL, cW, cH) {
+    const s = SCALE;
+    target.set(cL * s / 2, cH * s / 2, cW * s / 2);
+    const maxDim = Math.max(cL, cW, cH) * s;
+    spherical.radius = maxDim * 2.2;
+    panOffset.set(0, 0, 0);
+    updateCamera();
+  }
+
+  function renderSingleScene(cr) {
+    if (!scene) return;
+    clearScene();
+    if (!cr || !cr.result) return;
+    const { crateL, crateW, crateH, result, box } = cr;
+    const s = SCALE;
+
+    drawCrate(crateL, crateW, crateH);
+    const color = new THREE.Color(box.color);
+    const total = result.positions.length;
+    const showMarkers = orientationMarkers && total <= 200;
+
+    // 按旋转后的尺寸分组
+    const dimGroups = new Map();
+    result.positions.forEach((p, i) => {
+      const key = p.l + '-' + p.w + '-' + p.h;
+      if (!dimGroups.has(key)) dimGroups.set(key, { l: p.l, w: p.w, h: p.h, items: [] });
+      dimGroups.get(key).items.push({ ...p, idx: i });
+    });
+
+    for (const [, g] of dimGroups) {
+      const gbL = g.l * s, gbW = g.w * s, gbH = g.h * s;
+      const gCount = g.items.length;
+      const isRotatedGroup = !(g.l === box.l && g.w === box.w && g.h === box.h);
+
+      if (showMarkers) {
+        // 有方向标模式：每个纸箱用独立的 Group，带3D旋转
+        const rot = getBoxRotation(box.l, box.w, box.h, g.l, g.w, g.h);
+        // 旋转过的纸箱使用同色系稍深一点的颜色，正放保持原色
+        const groupColor = isRotatedGroup ? color.clone().offsetHSL(0.04, 0, -0.08) : color;
+        const markerModel = createBoxModel(box.l, box.w, box.h, groupColor, true);
+        g.items.forEach((p, i) => {
+          const boxClone = markerModel.clone(true);
+          // 应用3D旋转
+          boxClone.rotation.set(rot.rotX, rot.rotY, rot.rotZ);
+          // 放置位置：用旋转后的尺寸计算中心点
+          boxClone.position.set(p.x * s + gbL / 2, p.z * s + gbH / 2, p.y * s + gbW / 2);
+          boxGroup.add(boxClone);
+        });
+      } else {
+        // 无方向标模式（大量纸箱）：用 InstancedMesh 提升性能
+        // 旋转过的纸箱使用同色系稍深一点的颜色，正放保持原色
+        const gColor = isRotatedGroup ? color.clone().offsetHSL(0.04, 0, -0.08) : color;
+        const boxGeom = new THREE.BoxGeometry(gbL - 0.05, gbH - 0.05, gbW - 0.05);
+        const boxMat = new THREE.MeshStandardMaterial({ color: gColor, transparent: true, opacity: 0.95, roughness: 0.6, metalness: 0.1 });
+        const instMesh = new THREE.InstancedMesh(boxGeom, boxMat, gCount);
+        const dummy = new THREE.Object3D();
+        g.items.forEach((p, i) => {
+          dummy.position.set(p.x * s + gbL / 2, p.z * s + gbH / 2, p.y * s + gbW / 2);
+          dummy.rotation.set(0, 0, 0);
+          dummy.updateMatrix();
+          instMesh.setMatrixAt(i, dummy.matrix);
+        });
+        instMesh.instanceMatrix.needsUpdate = true;
+        instMesh.castShadow = true;
+        boxGroup.add(instMesh);
+        // 存储元数据用于 hover 检测
+        const metaArr = g.items.map(p => ({
+          l: box.l, w: box.w, h: box.h,
+          name: box.name,
+          rotated: p.rotated || false
+        }));
+        instancedMeshMeta.push({ mesh: instMesh, meta: metaArr });
+      }
+    }
+
+    setCamera(crateL, crateW, crateH);
+
+    const mainCount = result.xCount * result.yCount * result.zCount;
+    const tailCount = result.count - mainCount;
+    const tailInfo = tailCount > 0 ? '<br>含旋转填充: <b style="color:#fa8c16">+' + tailCount + ' 个</b>' : '';
+    const info = document.getElementById('canvas-info');
+    info.innerHTML = '<b>' + box.name + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
+    document.getElementById('legend-overlay').style.display = 'none';
+    wireframeMode = false;
+  }
+
+  function renderMixedScene(mr) {
+    if (!scene) return;
+    clearScene();
+    const { placed } = mr;
+    const crateL = mr.displayCrateL || mr.crateL_raw || (mr.crateL + (mr.gap || 0) * 2) || 1200;
+    const crateW = mr.displayCrateW || mr.crateW_raw || (mr.crateW + (mr.gap || 0) * 2) || 1000;
+    const crateH = mr.displayCrateH || mr.crateH_raw || (mr.crateH + (mr.gap || 0) * 2) || 800;
+    const s = SCALE;
+
+    drawCrate(crateL, crateW, crateH);
+
+    const groups = {};
+    placed.forEach((p, i) => {
+      const dimKey = p.boxIdx + '-' + p.l + '-' + p.w + '-' + p.h;
+      if (!groups[dimKey]) groups[dimKey] = [];
+      groups[dimKey].push({ ...p, globalIdx: i });
+    });
+
+    const showMarkers = orientationMarkers && placed.length <= 200;
+
+    Object.entries(groups).forEach(([dimKey, items]) => {
+      const bx = items[0];
+      const bL = bx.l * s, bW = bx.w * s, bH = bx.h * s;
+      const origL = bx.origL || bx.l;
+      const origW = bx.origW || bx.w;
+      const origH = bx.origH || bx.h;
+      const baseColor = new THREE.Color(bx.color);
+      const isRotatedGroup = !(bx.l === origL && bx.w === origW && bx.h === origH);
+
+      if (showMarkers) {
+        // 有方向标模式：每个纸箱用独立 Group，带3D旋转
+        // 旋转过的纸箱使用同色系稍深一点的颜色，正放保持原色
+        const color = isRotatedGroup ? baseColor.clone().offsetHSL(0.04, 0, -0.08) : baseColor;
+        const rot = getBoxRotation(origL, origW, origH, bx.l, bx.w, bx.h);
+        const baseModel = createBoxModel(origL, origW, origH, color, true);
+
+        items.forEach((p, i) => {
+          const boxClone = baseModel.clone(true);
+          boxClone.rotation.set(rot.rotX, rot.rotY, rot.rotZ);
+          boxClone.position.set(p.x * s + bL / 2, p.z * s + bH / 2, p.y * s + bW / 2);
+          boxGroup.add(boxClone);
+        });
+      } else {
+        // 无方向标模式：用 InstancedMesh
+        // 旋转过的纸箱使用同色系稍深一点的颜色，正放保持原色
+        const color = isRotatedGroup ? baseColor.clone().offsetHSL(0.04, 0, -0.08) : baseColor;
+        const geom = new THREE.BoxGeometry(bL - 0.05, bH - 0.05, bW - 0.05);
+        const mat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.95, roughness: 0.6, metalness: 0.1 });
+        const instMesh = new THREE.InstancedMesh(geom, mat, items.length);
+        const dummy = new THREE.Object3D();
+        items.forEach((p, i) => {
+          dummy.position.set(p.x * s + bL / 2, p.z * s + bH / 2, p.y * s + bW / 2);
+          dummy.updateMatrix();
+          instMesh.setMatrixAt(i, dummy.matrix);
+        });
+        instMesh.instanceMatrix.needsUpdate = true;
+        instMesh.castShadow = true;
+        boxGroup.add(instMesh);
+        // 存储元数据用于 hover 检测
+        const metaArr = items.map(p => ({
+          l: p.origL || bx.l, w: p.origW || bx.w, h: p.origH || bx.h,
+          name: bx.name || '',
+          rotated: p.rotated || false
+        }));
+        instancedMeshMeta.push({ mesh: instMesh, meta: metaArr });
+      }
+    });
+
+    setCamera(crateL, crateW, crateH);
+
+    const info = document.getElementById('canvas-info');
+    const breakdownHtml = mr.breakdown.filter(b => b.count > 0).map(b => {
+      return b.box.name + ': <b>' + b.count + '个</b>';
+    }).join('<br>');
+    info.innerHTML = '<b>🎲 混装方案</b><br>总装入: <b>' + mr.totalCount + ' 个</b><br>' + breakdownHtml + '<br>利用率: <b style="color:#52c41a">' + (mr.utilRate * 100).toFixed(1) + '%</b>';
+
+    const legendEl = document.getElementById('legend-overlay');
+    legendEl.style.display = 'block';
+    legendEl.innerHTML = mr.breakdown.filter(b => b.count > 0).map(b =>
+      '<div class="legend-item"><div class="legend-dot" style="background:' + b.box.color + '"></div>' + b.box.name + ': ' + b.count + '个</div>'
+    ).join('');
+    wireframeMode = false;
+  }
+
+  function isReady() { return !!renderer; }
+
+  function resizeIfNeeded() {
+    if (!renderer || !threeWrap) return;
+    const w2 = threeWrap.clientWidth, h2 = threeWrap.clientHeight;
+    if (w2 > 0 && h2 > 0) {
+      camera.aspect = w2 / h2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w2, h2);
+    }
+  }
+
+  return { init, isReady, resizeIfNeeded, clearScene, renderSingleScene, renderMixedScene, resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers };
+})();
+
+// ============================================================
+// Module: UIRenderer — UI 渲染
+// ============================================================
+const UIRenderer = (function() {
+  'use strict';
+
+  function renderBoxList() {
+    const s = AppState;
+    s.boxes = s.getBoxValues();
+    const list = document.getElementById('box-list');
+    const empty = document.getElementById('box-list-empty');
+    const isMixed = s.currentMode === 'mixed';
+
+    if (s.boxes.length === 0) {
+      list.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    list.innerHTML = s.boxes.map(b => {
+      return '<div class="box-item' + (b.enabled === false ? ' box-item-disabled' : '') + '" id="box-item-' + b.id + '">' +
+        '<div class="box-item-header">' +
+          '<label class="box-check-label" title="勾选后参与计算">' +
+            '<input type="checkbox" class="box-checkbox" id="bc-' + b.id + '" ' + (b.enabled !== false ? 'checked' : '') + ' onchange="App.toggleBoxEnabled(' + b.id + ', this.checked)">' +
+          '</label>' +
+          '<span class="box-label">' +
+            '<span class="color-dot" style="background:' + b.color + '"></span>' +
+            '<input id="bn-' + b.id + '" value="' + (b.name || '').replace(/"/g, '&quot;') + '"' +
+              ' style="border:none;background:transparent;font-size:13px;font-weight:500;outline:none;min-width:60px;max-width:140px;cursor:text;padding:2px 4px;border-radius:4px"' +
+              ' onchange="App.updateBoxName(' + b.id + ', this.value)"' +
+              ' onfocus="this.style.background=\'#f0f5ff\';this.style.outline=\'1px solid #1677ff\'"' +
+              ' onblur="this.style.background=\'transparent\';this.style.outline=\'none\'"' +
+              ' title="点击编辑名称">' +
+          '</span>' +
+          '<button class="spec-del-btn" onclick="App.saveCurrentBoxSpec(' + b.id + ')" title="保存当前纸箱尺寸到规格库">💾 保存</button>' +
+          '<button class="remove-btn" onclick="App.removeBox(' + b.id + ')">×</button>' +
+        '</div>' +
+        '<div class="form-row">' +
+          '<div class="field-group"><label>长 L (mm)</label><input type="number" id="bl-' + b.id + '" value="' + b.l + '" min="1"></div>' +
+          '<div class="field-group"><label>宽 W (mm)</label><input type="number" id="bw-' + b.id + '" value="' + b.w + '" min="1"></div>' +
+          '<div class="field-group"><label>高 H (mm)</label><input type="number" id="bh-' + b.id + '" value="' + b.h + '" min="1"></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
+          '<label id="ku-label-' + b.id + '" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;cursor:pointer;user-select:none" title="勾选后纸箱始终保持正放">' +
+            '<input type="checkbox" id="bu-' + b.id + '" ' + (b.keepUpright ? 'checked' : '') + ' style="cursor:pointer;margin:0">' +
+            '保持正放（禁止竖放）' +
+          '</label>' +
+        '</div>' +
+        (isMixed ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1" placeholder="不限"><span class="qty-hint">留空 = 尽量多</span></div>' : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function renderResults() {
+    const s = AppState;
+    const cont = document.getElementById('results-content');
+
+    if (s.currentMode === 'single') {
+      if (!s.calcResults || s.calcResults.length === 0) {
+        cont.innerHTML = '<div class="no-result"><div class="nr-icon">📐</div><h3>等待计算</h3><p>请先添加纸箱并计算</p></div>';
+        return;
+      }
+      const hasAny = s.calcResults.some(r => r.result && r.result.count > 0);
+      if (!hasAny) {
+        cont.innerHTML = '<div class="no-result"><div class="nr-icon">😅</div><h3>无法装入</h3><p>所有纸箱尺寸均超过木箱内径，请检查参数</p></div>';
+        return;
+      }
+      const best = s.calcResults.find(r => r.isBest);
+      cont.innerHTML = '<div style="margin-bottom:12px;font-size:13px;color:#666">共计算 <b style="color:#333">' + s.calcResults.length + '</b> 种纸箱方案，最优方案：<b style="color:#1677ff">' + (best ? best.box.name : '--') + '</b> 可装 <b style="color:#1677ff">' + (best && best.result ? best.result.count : 0) + '</b> 个</div>' +
+        '<div class="result-grid">' + s.calcResults.map((cr, idx) => renderSingleCard(cr, idx)).join('') + '</div>';
+    } else {
+      const mr = s.mixResult;
+      if (!mr || mr.totalCount === 0) {
+        cont.innerHTML = '<div class="no-result"><div class="nr-icon">😅</div><h3>无法装入</h3><p>所有纸箱尺寸均超过木箱内径，请检查参数</p></div>';
+        return;
+      }
+      cont.innerHTML = renderMixedCard(mr);
+    }
+  }
+
+  function renderSingleCard(cr, idx) {
+    const { box, result, isBest, crateL, crateW, crateH } = cr;
+    if (!result || result.count === 0) {
+      return '<div class="result-card"><div class="result-card-header"><div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name + '</div></div><div style="color:#ff4d4f;font-size:13px;background:#fff2f0;border-radius:8px;padding:10px">纸箱尺寸超过木箱内径，无法装入</div></div>';
+    }
+    const util = (result.utilRate * 100).toFixed(1);
+    const utilColor = result.utilRate > 0.7 ? '#52c41a' : result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
+    const tailFill = result.count - result.xCount * result.yCount * result.zCount;
+    return '<div class="result-card ' + (isBest ? 'best' : '') + '" onclick="App.switchToVisual(' + idx + ')">' +
+      '<div class="result-card-header">' +
+        '<div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name +
+          (result.isRotated ? '<span class="tag-rotate">↻ 旋转</span>' : '') +
+          (isBest ? '<span class="best-badge">最优</span>' : '') +
+        '</div>' +
+        '<div class="rc-meta">' + (result.origL || box.l) + '×' + (result.origW || box.w) + '×' + (result.origH || box.h) + ' mm</div>' +
+      '</div>' +
+      '<div class="stat-row">' +
+        '<div class="stat-item"><div class="stat-val">' + result.count + '</div><div class="stat-lbl">装箱数量（个）</div></div>' +
+        '<div class="stat-item"><div class="stat-val" style="color:' + utilColor + '">' + util + '%</div><div class="stat-lbl">空间利用率</div></div>' +
+      '</div>' +
+      '<div class="util-bar"><div class="util-fill" style="width:' + util + '%;background:' + utilColor + '"></div></div>' +
+      '<div class="arrange-detail">' +
+        '<div style="font-size:11px;color:#aaa;margin-bottom:6px">实际摆放方向</div>' +
+        '<div class="arr-row"><span class="arr-label">纸箱尺寸（实际）</span><span class="arr-val">' + result.bL + '×' + result.bW + '×' + result.bH + ' mm</span></div>' +
+        '<div class="arr-row"><span class="arr-label">排列（X × Y × Z）</span><span class="arr-val">' + result.xCount + ' × ' + result.yCount + ' × ' + result.zCount + '</span></div>' +
+        (tailFill > 0 ? '<div class="arr-row"><span class="arr-label">旋转填充增额</span><span class="arr-val" style="color:#fa8c16">+' + tailFill + ' 个</span></div>' : '') +
+        '<div class="arr-row"><span class="arr-label">木箱内容积</span><span class="arr-val">' + (crateL * crateW * crateH / 1e9).toFixed(3) + ' m³</span></div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+    '</div>';
+  }
+
+  function renderMixedCard(mr) {
+    const util = (mr.utilRate * 100).toFixed(1);
+    const utilColor = mr.utilRate > 0.7 ? '#52c41a' : mr.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
+    const displayL = mr.displayCrateL || mr.crateL_raw || mr.crateL + (mr.gap||0)*2 || 1200;
+    const displayW = mr.displayCrateW || mr.crateW_raw || mr.crateW + (mr.gap||0)*2 || 1000;
+    const displayH = mr.displayCrateH || mr.crateH_raw || mr.crateH + (mr.gap||0)*2 || 800;
+    const crateVol = (displayL * displayW * displayH / 1e9).toFixed(3);
+
+    const placedByBoxIdx = {};
+    (mr.placed || []).forEach(p => {
+      if (!placedByBoxIdx[p.boxIdx]) placedByBoxIdx[p.boxIdx] = { rotated: 0, dims: new Set() };
+      if (p.rotated) placedByBoxIdx[p.boxIdx].rotated++;
+      placedByBoxIdx[p.boxIdx].dims.add(p.l + '×' + p.w + '×' + p.h);
+    });
+
+    const breakdownRows = mr.breakdown.filter(b => b.count > 0).map((b, i) => {
+      const pct = (b.count / mr.totalCount * 100).toFixed(0);
+      const reqStr = b.requested !== null ? '(需求:' + b.requested + ')' : '';
+      let dimInfo = '';
+      if (placedByBoxIdx[i] && placedByBoxIdx[i].dims.size > 1) {
+        dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转 | ' + Array.from(placedByBoxIdx[i].dims).join(' | ') + '</span>';
+      }
+      return '<div class="mix-breakdown-row">' +
+        '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + b.box.name + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +
+        '<div class="mbd-count">' + b.count + ' 个</div>' +
+        '<div class="mbd-pct">' + pct + '%</div>' +
+      '</div>';
+    }).join('');
+
+    const unmet = mr.breakdown.filter(b => b.requested !== null && b.count < b.requested);
+    const unmetHtml = unmet.length > 0
+      ? '<div style="margin-top:8px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px;font-size:12px;color:#875800">⚠️ 以下纸箱未能完全满足需求：' + unmet.map(b => b.box.name + ' 差 ' + (b.requested - b.count) + ' 个').join('、') + '</div>' : '';
+
+    const strategyLabel = mr.strategy === 'util' ? '<span class="tag-strategy util">📐 空间优先</span>' : '<span class="tag-strategy">📊 数量优先</span>';
+    const strategyHint = mr.strategy === 'util'
+      ? '<div style="margin-top:8px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px;font-size:12px;color:#135200">💡 空间优先策略：智能组合探索已启用，在多种纸箱之间寻找最优搭配比例，追求最高空间利用率</div>'
+      : '<div style="margin-top:8px;background:#e6f4ff;border:1px solid #91caff;border-radius:8px;padding:8px;font-size:12px;color:#0958d9">💡 数量优先策略：优先装入尽可能多的纸箱，适合发货最大化场景</div>';
+
+    return '<div style="margin-bottom:12px;font-size:13px;color:#666">混装模式 · 旋转优化 · 智能组合探索 <span class="tag-mixed">混装</span>' + strategyLabel + '</div>' +
+      '<div class="result-grid">' +
+        '<div class="result-card mixed-card" onclick="App.switchToVisual(0)" style="cursor:pointer">' +
+          '<div class="result-card-header">' +
+            '<div class="rc-title">🎲 混装方案 <span class="mixed-badge">混装</span>' + strategyLabel + '</div>' +
+            '<div class="rc-meta">' + displayL + '×' + displayW + '×' + displayH + ' mm 木箱</div>' +
+          '</div>' +
+          '<div class="stat-row four">' +
+            '<div class="stat-item"><div class="stat-val">' + mr.totalCount + '</div><div class="stat-lbl">总装箱数</div></div>' +
+            '<div class="stat-item"><div class="stat-val" style="color:' + utilColor + '">' + util + '%</div><div class="stat-lbl">空间利用率</div></div>' +
+            '<div class="stat-item"><div class="stat-val">' + mr.breakdown.filter(b => b.count > 0).length + '</div><div class="stat-lbl">纸箱种类</div></div>' +
+            '<div class="stat-item"><div class="stat-val">' + crateVol + '</div><div class="stat-lbl">木箱容积(m³)</div></div>' +
+          '</div>' +
+          '<div class="util-bar"><div class="util-fill" style="width:' + util + '%;background:' + utilColor + '"></div></div>' +
+          '<div class="mix-breakdown" style="margin-top:12px"><div class="mix-breakdown-header">各类纸箱明细</div>' + breakdownRows + '</div>' +
+          unmetHtml + strategyHint +
+          '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderSchemaTabs() {
+    const s = AppState;
+    const cont = document.getElementById('scheme-tabs');
+    if (s.currentMode === 'single') {
+      if (!s.calcResults || s.calcResults.length === 0) {
+        cont.innerHTML = '<span style="font-size:12px;color:#bbb">请先计算</span>';
+        return;
+      }
+      cont.innerHTML = s.calcResults.map((cr, i) =>
+        '<button class="scheme-tab ' + (i === s.currentSchemeIdx ? 'active' : '') + '" onclick="App.switchScheme(' + i + ')">' +
+          '<span class="color-dot" style="background:' + cr.box.color + '"></span>' +
+          cr.box.name + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
+        '</button>').join('');
+    } else {
+      const mr = s.mixResult;
+      if (!mr) { cont.innerHTML = '<span style="font-size:12px;color:#bbb">请先计算</span>'; return; }
+      cont.innerHTML = '<button class="scheme-tab active">🎲 混装方案 <b>' + mr.totalCount + '个</b></button>';
+    }
+  }
+
+  function renderHistoryList() {
+    const cont = document.getElementById('history-list-content');
+    const hist = StorageManager.loadHistoryRaw();
+    if (hist.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="es-icon">🕰️</div><p>还没有历史记录</p></div>';
+      return;
+    }
+    cont.innerHTML = '<div class="history-list">' + hist.map((entry, i) => {
+      const d = new Date(entry.timestamp);
+      const timeStr = (d.getMonth()+1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      let crateStr = '--', bestCount = 0, modeTag = '';
+      if (entry.mode === 'mixed' && entry.mixResult) {
+        const mr = entry.mixResult;
+        crateStr = (mr.displayCrateL || mr.crateL_raw || mr.crateL) + '×' + (mr.displayCrateW || mr.crateW_raw || mr.crateW) + '×' + (mr.displayCrateH || mr.crateH_raw || mr.crateH);
+        bestCount = mr.totalCount;
+        const stratLabel = mr.strategy === 'util' ? '空间优先' : '数量优先';
+        modeTag = ' <span style="color:#1677ff;font-size:11px">[混装·' + stratLabel + ']</span>';
+      } else if (entry.calcResults && entry.calcResults.length > 0) {
+        const best = entry.calcResults.find(r => r.isBest) || entry.calcResults[0];
+        crateStr = best ? best.crateL + '×' + best.crateW + '×' + best.crateH : '--';
+        bestCount = best && best.result ? best.result.count : 0;
+      }
+      return '<div class="history-item" onclick="App.loadHistory(' + i + ')">' +
+        '<div class="hi-time">' + timeStr + '</div>' +
+        '<div class="hi-info"><b>木箱 ' + crateStr + ' mm</b>' + modeTag + '</div>' +
+        '<div class="hi-count">最多 ' + bestCount + ' 个</div>' +
+        '<button class="history-del" onclick="event.stopPropagation();App.deleteHistory(' + i + ')">×</button>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderSpecManagerContent() {
+    const s = AppState;
+    const body = document.getElementById('spec-manager-body');
+    body.innerHTML = '';
+
+    if (s.specManagerTab === 'box') {
+      const specs = StorageManager.loadBoxSpecs();
+      if (specs.length === 0) {
+        body.innerHTML = '<div class="modal-empty">暂无保存的纸箱规格<br><span style="font-size:11px">在纸箱卡片底部点击"💾 保存规格"来添加</span></div>';
+        return;
+      }
+      let html = '<table class="spec-table"><thead><tr><th>名称</th><th>尺寸 (mm)</th><th style="width:130px">操作</th></tr></thead><tbody>';
+      specs.forEach(function(s) {
+        html += '<tr><td>' + (s.name || '') + '</td><td><span class="dim-mono">' + s.l + '×' + s.w + '×' + s.h + '</span></td>' +
+          '<td><button class="btn-table import" onclick="App.importBoxSpec(' + s.id + ')">📥 导入</button>' +
+          '<button class="btn-table delete" onclick="App.deleteBoxSpec(' + s.id + ')">🗑 删除</button></td></tr>';
+      });
+      html += '</tbody></table>';
+      body.innerHTML = html;
+    } else {
+      const specs = StorageManager.loadCrateSpecs();
+      if (specs.length === 0) {
+        body.innerHTML = '<div class="modal-empty">暂无保存的木箱尺寸<br><span style="font-size:11px">在木箱尺寸区域点击"💾 保存尺寸"来添加</span></div>';
+        return;
+      }
+      let html = '<table class="spec-table"><thead><tr><th>名称</th><th>尺寸 (mm)</th><th style="width:130px">操作</th></tr></thead><tbody>';
+      specs.forEach(function(s) {
+        html += '<tr><td>' + (s.name || '') + '</td><td><span class="dim-mono">' + s.l + '×' + s.w + '×' + s.h + '</span></td>' +
+          '<td><button class="btn-table import" onclick="App.importCrateSpec(' + s.id + ')">📥 导入</button>' +
+          '<button class="btn-table delete" onclick="App.deleteCrateSpec(' + s.id + ')">🗑 删除</button></td></tr>';
+      });
+      html += '</tbody></table>';
+      body.innerHTML = html;
+    }
+  }
+
+  function showError(msg) {
+    const errDiv = document.getElementById('calc-error');
+    errDiv.innerHTML = '<div class="alert alert-error">' + msg + '</div>';
+    errDiv.style.display = 'block';
+  }
+
+  function flashMsg(msg) {
+    const toast = document.createElement('div');
+    toast.textContent = msg;
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:8px 20px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity 0.4s;opacity:1';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
+  }
+
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg };
+})();
+
+// ============================================================
+// Module: App — 应用主控制器（对外暴露的公共 API）
+// ============================================================
+var App = (function() {
+  'use strict';
+  const S = AppState;
+  const PE = PackingEngine;
+  const SM = StorageManager;
+  const V3 = Visualizer3D;
+  const UI = UIRenderer;
+
+  // 侧边栏（移动端）
+  function openSidebar() {
+    document.getElementById('sidebar-panel').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('show');
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar-panel').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('show');
+  }
+
+  // 模式切换
+  function setMode(mode) {
+    S.currentMode = mode;
+    document.getElementById('mode-btn-single').classList.toggle('active', mode === 'single');
+    document.getElementById('mode-btn-mixed').classList.toggle('active', mode === 'mixed');
+    document.getElementById('mode-single-hint').style.display = mode === 'single' ? 'block' : 'none';
+    document.getElementById('mode-mixed-hint').style.display = mode === 'mixed' ? 'block' : 'none';
+    // 策略选择器仅在混装模式显示
+    document.getElementById('strategy-row').style.display = mode === 'mixed' ? 'flex' : 'none';
+    UI.renderBoxList();
+  }
+
+  // 优化策略切换
+  function setStrategy(strategy) {
+    S.mixStrategy = strategy;
+    document.getElementById('strategy-btn-count').classList.toggle('active', strategy === 'count');
+    document.getElementById('strategy-btn-util').classList.toggle('active', strategy === 'util');
+  }
+
+  // 纸箱管理
+  function addBox(l, w, h, name) {
+    S.addBox(l, w, h, name);
+    UI.renderBoxList();
+  }
+
+  function removeBox(id) {
+    S.removeBox(id);
+    UI.renderBoxList();
+  }
+
+  function updateBoxName(id, name) {
+    S.updateBoxName(id, name);
+  }
+
+  // 规格管理
+  function saveCurrentBoxSpec(boxId) {
+    const b = S.boxes.find(x => x.id === boxId);
+    if (!b) return;
+    const l = parseFloat(document.getElementById('bl-' + b.id)?.value) || b.l;
+    const w = parseFloat(document.getElementById('bw-' + b.id)?.value) || b.w;
+    const h = parseFloat(document.getElementById('bh-' + b.id)?.value) || b.h;
+    if (!l || !w || !h || l <= 0) { alert('请先填写完整的纸箱尺寸'); return; }
+    const name = document.getElementById('bn-' + b.id)?.value || b.name;
+    const specs = SM.loadBoxSpecs();
+    specs.push({ id: Date.now(), name, l, w, h, color: b.color, qty: '', keepUpright: false, createdAt: new Date().toISOString() });
+    SM.saveBoxSpecs(specs);
+    UI.flashMsg('纸箱规格已保存');
+  }
+
+  function deleteBoxSpec(specId) {
+    const specs = SM.loadBoxSpecs().filter(function(s) { return s.id !== specId; });
+    SM.saveBoxSpecs(specs);
+    UI.renderSpecManagerContent();
+    UI.flashMsg('纸箱规格已删除');
+  }
+
+  function importBoxSpec(specId) {
+    const specs = SM.loadBoxSpecs();
+    const spec = specs.find(function(s) { return s.id === specId; });
+    if (!spec) return;
+    const id = ++S.boxIdCounter;
+    const colorIdx = S.boxes.length % S.BOX_COLORS.length;
+    S.boxes.push({ id, l: spec.l, w: spec.w, h: spec.h, name: spec.name, color: S.BOX_COLORS[colorIdx], qty: '', keepUpright: spec.keepUpright || false });
+    UI.renderBoxList();
+    closeSpecManager();
+    UI.flashMsg('已导入: ' + spec.name);
+  }
+
+  function saveCrateSpec() {
+    const cL = parseFloat(document.getElementById('c-l').value);
+    const cW = parseFloat(document.getElementById('c-w').value);
+    const cH = parseFloat(document.getElementById('c-h').value);
+    if (!cL || !cW || !cH || cL <= 0) { alert('请先填写完整的木箱尺寸'); return; }
+    const specs = SM.loadCrateSpecs();
+    specs.push({ id: Date.now(), name: '木箱 ' + cL + '×' + cW + '×' + cH, l: cL, w: cW, h: cH, createdAt: new Date().toISOString() });
+    SM.saveCrateSpecs(specs);
+    UI.flashMsg('木箱尺寸已保存');
+  }
+
+  function importCrateSpec(specId) {
+    const specs = SM.loadCrateSpecs();
+    const spec = specs.find(s => s.id === specId);
+    if (!spec) return;
+    document.getElementById('c-l').value = spec.l;
+    document.getElementById('c-w').value = spec.w;
+    document.getElementById('c-h').value = spec.h;
+    updateCrateVol();
+    closeSpecManager();
+    UI.flashMsg('已导入: ' + spec.name);
+  }
+
+  function deleteCrateSpec(specId) {
+    const specs = SM.loadCrateSpecs().filter(function(s) { return s.id !== specId; });
+    SM.saveCrateSpecs(specs);
+    UI.renderSpecManagerContent();
+    UI.flashMsg('木箱尺寸已删除');
+  }
+
+  function showSpecManager(defaultTab) {
+    S.specManagerTab = defaultTab || 'box';
+    document.getElementById('spec-manager-modal').style.display = 'flex';
+    switchSpecTab(S.specManagerTab);
+  }
+
+  function closeSpecManager(e) {
+    if (e) {
+      const overlay = document.getElementById('spec-manager-modal');
+      if (e.target !== overlay) return;
+    }
+    document.getElementById('spec-manager-modal').style.display = 'none';
+  }
+
+  function switchSpecTab(tab) {
+    S.specManagerTab = tab;
+    document.getElementById('modal-tab-box').classList.toggle('active', tab === 'box');
+    document.getElementById('modal-tab-crate').classList.toggle('active', tab === 'crate');
+    UI.renderSpecManagerContent();
+  }
+
+  // 计算
+  function calculate() {
+    const errDiv = document.getElementById('calc-error');
+    errDiv.style.display = 'none';
+    errDiv.innerHTML = '';
+
+    const cL = parseFloat(document.getElementById('c-l').value);
+    const cW = parseFloat(document.getElementById('c-w').value);
+    const cH = parseFloat(document.getElementById('c-h').value);
+    const gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+    const layerGap = parseFloat(document.getElementById('opt-layer-gap').value) || 0;
+    const allowRotate = document.getElementById('opt-rotate').checked;
+    const retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
+
+    if (!cL || !cW || !cH || cL <= 0 || cW <= 0 || cH <= 0) {
+      UI.showError('请正确填写木箱尺寸（必须大于0）'); return;
+    }
+    const currentBoxes = S.getBoxValues();
+    if (currentBoxes.length === 0) { UI.showError('请至少添加一种纸箱'); return; }
+
+    // 过滤出已勾选参与计算的纸箱
+    const activeBoxes = currentBoxes.filter(b => b.enabled !== false);
+    if (activeBoxes.length === 0) { UI.showError('请至少勾选一种纸箱参与计算'); return; }
+
+    const errors = [];
+    for (const b of activeBoxes) {
+      if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0)
+        errors.push(b.name + ' 的尺寸不完整');
+    }
+    if (errors.length) { UI.showError(errors.join('<br>')); return; }
+
+    if (S.currentMode === 'single') {
+      S.calcResults = activeBoxes.map(b => {
+        const res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+        return { box: b, crateL: cL, crateW: cW, crateH: cH, gap, result: res };
+      });
+      let bestIdx = 0;
+      for (let i = 1; i < S.calcResults.length; i++) {
+        const a = S.calcResults[i].result, b2 = S.calcResults[bestIdx].result;
+        if (!b2 || (a && a.count > b2.count)) bestIdx = i;
+        else if (a && b2 && a.count === b2.count && a.utilRate > b2.utilRate) bestIdx = i;
+      }
+      if (S.calcResults[bestIdx]?.result) S.calcResults[bestIdx].isBest = true;
+      S.mixResult = null;
+    } else {
+      const boxConfigs = activeBoxes.map(b => {
+        const qtyRaw = b.qty;
+        const qty = (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null) ? null : Math.max(1, parseInt(qtyRaw) || 1);
+        return { box: b, qty };
+      });
+      S.mixResult = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+      if (S.mixResult) {
+        S.mixResult.displayCrateL = cL;
+        S.mixResult.displayCrateW = cW;
+        S.mixResult.displayCrateH = cH;
+        S.mixResult.strategy = S.mixStrategy;
+      }
+      S.calcResults = [];
+    }
+
+    SM.saveHistory({ mode: S.currentMode, calcResults: S.calcResults, mixResult: S.mixResult, timestamp: Date.now() });
+    UI.renderResults();
+    UI.renderSchemaTabs();
+    S.currentSchemeIdx = 0;
+
+    const isVisualActive = document.getElementById('panel-visual').classList.contains('active');
+    if (isVisualActive && V3.isReady()) {
+      if (S.currentMode === 'mixed' && S.mixResult) {
+        V3.renderMixedScene(S.mixResult);
+      } else if (S.calcResults.length > 0) {
+        V3.renderSingleScene(S.calcResults[0]);
+      }
+    }
+    // 移动端：计算后自动关闭侧边栏
+    closeSidebar();
+    switchTab('results');
+  }
+
+  // Tab 切换
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+
+    // 更新移动端底部 tab
+    document.querySelectorAll('.mtab').forEach(t => {
+      t.classList.toggle('active', t.dataset.mtab === tab);
+    });
+
+    if (tab === 'visual') {
+      setTimeout(function() {
+        if (!V3.isReady()) {
+          V3.init();
+        } else {
+          V3.resizeIfNeeded();
+        }
+        if (S.currentMode === 'single' && S.calcResults.length > 0) {
+          V3.renderSingleScene(S.calcResults[S.currentSchemeIdx]);
+        } else if (S.currentMode === 'mixed' && S.mixResult) {
+          V3.renderMixedScene(S.mixResult);
+        }
+      }, 60);
+    }
+    if (tab === 'history') UI.renderHistoryList();
+  }
+
+  function switchToVisual(idx) {
+    S.currentSchemeIdx = idx;
+    switchTab('visual');
+    document.querySelectorAll('.scheme-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  }
+
+  function switchScheme(idx) {
+    S.currentSchemeIdx = idx;
+    V3.renderSingleScene(S.calcResults[idx]);
+    document.querySelectorAll('.scheme-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  }
+
+  // 历史记录
+  function loadHistory(idx) {
+    const hist = SM.loadHistoryRaw();
+    const entry = hist[idx];
+    if (!entry) return;
+    S.currentMode = entry.mode || 'single';
+    setMode(S.currentMode);
+    S.calcResults = entry.calcResults || [];
+    S.mixResult = entry.mixResult || null;
+    const ref = entry.calcResults?.[0] || (entry.mixResult ? {
+      crateL: entry.mixResult.displayCrateL || entry.mixResult.crateL_raw || entry.mixResult.crateL,
+      crateW: entry.mixResult.displayCrateW || entry.mixResult.crateW_raw || entry.mixResult.crateW,
+      crateH: entry.mixResult.displayCrateH || entry.mixResult.crateH_raw || entry.mixResult.crateH
+    } : null);
+    if (ref) {
+      document.getElementById('c-l').value = ref.crateL;
+      document.getElementById('c-w').value = ref.crateW;
+      document.getElementById('c-h').value = ref.crateH;
+      updateCrateVol();
+    }
+    UI.renderResults();
+    UI.renderSchemaTabs();
+    switchTab('results');
+  }
+
+  function deleteHistory(idx) {
+    SM.deleteHistory(idx);
+    UI.renderHistoryList();
+  }
+
+  function clearHistoryConfirm() {
+    if (confirm('确定清空所有历史记录？')) {
+      SM.clearHistory();
+      UI.renderHistoryList();
+    }
+  }
+
+  // 工具
+  function clearAll() {
+    S.reset();
+    UI.renderBoxList();
+    document.getElementById('results-content').innerHTML = '<div class="no-result"><div class="nr-icon">📐</div><h3>等待计算</h3><p>在左侧填写木箱和纸箱尺寸，点击"开始计算"</p></div>';
+    document.getElementById('scheme-tabs').innerHTML = '<span style="font-size:12px;color:#bbb">请先计算</span>';
+    ['c-l','c-w','c-h'].forEach(function(id) { document.getElementById(id).value = id === 'c-l' ? '1200' : id === 'c-w' ? '1000' : '800'; });
+    updateCrateVol();
+    if (V3.isReady()) V3.clearScene();
+  }
+
+  function exportResult() {
+    const s = S;
+    if (s.currentMode === 'single') {
+      if (!s.calcResults || s.calcResults.length === 0) { alert('没有可导出的结果，请先计算'); return; }
+      const best = s.calcResults.find(r => r.isBest) || s.calcResults[0];
+      let text = '=== 装箱计算结果（单品对比模式）===\n';
+      text += '木箱尺寸（内径）: ' + best.crateL + ' × ' + best.crateW + ' × ' + best.crateH + ' mm\n\n';
+      s.calcResults.forEach(function(cr) {
+        text += '--- ' + cr.box.name + ' ---\n';
+        text += '原始尺寸: ' + (cr.box.origL||cr.box.l) + ' × ' + (cr.box.origW||cr.box.w) + ' × ' + (cr.box.origH||cr.box.h) + ' mm\n';
+        if (cr.result) {
+          text += '实际方向: ' + cr.result.bL + ' × ' + cr.result.bW + ' × ' + cr.result.bH + ' mm' + (cr.result.isRotated ? ' (旋转)' : '') + '\n';
+          text += '装入数量: ' + cr.result.count + ' 个\n';
+          text += '排列方式: ' + cr.result.xCount + ' × ' + cr.result.yCount + ' × ' + cr.result.zCount + '\n';
+          const tailFill = cr.result.count - cr.result.xCount * cr.result.yCount * cr.result.zCount;
+          if (tailFill > 0) text += '旋转填充增额: +' + tailFill + ' 个\n';
+          text += '空间利用率: ' + (cr.result.utilRate * 100).toFixed(1) + '%\n';
+        } else { text += '无法装入（尺寸超限）\n'; }
+        text += '\n';
+      });
+      downloadText(text, '装箱计算_单品');
+    } else {
+      const mr = s.mixResult;
+      if (!mr || mr.totalCount === 0) { alert('没有可导出的结果，请先计算'); return; }
+      let text = '=== 装箱计算结果（混装模式）===\n';
+      text += '木箱尺寸（内径）: ' + mr.crateL + ' × ' + mr.crateW + ' × ' + mr.crateH + ' mm\n';
+      text += '优化策略: ' + (mr.strategy === 'util' ? '空间优先（最大化空间利用率）' : '数量优先（最大化装箱数量）') + '\n';
+      text += '总装入数量: ' + mr.totalCount + ' 个\n';
+      text += '空间利用率: ' + (mr.utilRate * 100).toFixed(1) + '%\n\n';
+      text += '各类纸箱明细:\n';
+      mr.breakdown.filter(function(b) { return b.count > 0; }).forEach(function(b) {
+        text += '  ' + b.box.name + ' (' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm): ' + b.count + ' 个';
+        if (b.requested !== null) text += ' / 需求 ' + b.requested + ' 个';
+        text += '\n';
+      });
+      downloadText(text, '装箱计算_混装');
+    }
+  }
+
+  function downloadText(text, prefix) {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = prefix + '_' + new Date().toLocaleDateString('zh-CN').replace(/\//g,'') + '.txt';
+    a.click();
+  }
+
+  function updateCrateVol() {
+    const l = parseFloat(document.getElementById('c-l').value);
+    const w = parseFloat(document.getElementById('c-w').value);
+    const h = parseFloat(document.getElementById('c-h').value);
+    const el = document.getElementById('crate-vol-display');
+    if (l > 0 && w > 0 && h > 0) {
+      el.textContent = '内容积: ' + (l * w * h / 1e9).toFixed(4) + ' m³ = ' + (l * w * h / 1e6).toFixed(0) + ' cm³';
+    } else { el.textContent = ''; }
+  }
+
+  // 3D 控制
+  function resetCamera() { V3.resetCamera(); }
+  function toggleWireframe() { V3.toggleWireframe(); }
+  function toggleCrateVis() { V3.toggleCrateVis(); }
+  function toggleOrientationMarkers() { V3.toggleOrientationMarkers(); }
+
+  // 初始化
+  function init() {
+    // 加载已保存的纸箱规格
+    const savedSpecs = SM.loadBoxSpecs();
+    if (savedSpecs.length > 0) {
+      savedSpecs.forEach(function(spec, i) {
+        const id = ++S.boxIdCounter;
+        const colorIdx = i % S.BOX_COLORS.length;
+        S.boxes.push({
+          id, l: spec.l, w: spec.w, h: spec.h,
+          name: spec.name, color: S.BOX_COLORS[colorIdx],
+          qty: spec.qty || '', keepUpright: spec.keepUpright || false
+        });
+      });
+      UI.renderBoxList();
+    }
+    updateCrateVol();
+    UI.renderHistoryList();
+
+    // 确保初始状态正确（单品模式下隐藏策略选择器）
+    document.getElementById('strategy-row').style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
+
+    // 旋转开关联动
+    const optRotate = document.getElementById('opt-rotate');
+    function updateUprightLabels() {
+      const enabled = optRotate.checked;
+      document.querySelectorAll('[id^="ku-label-"]').forEach(function(el) {
+        el.style.opacity = enabled ? '1' : '0.4';
+        el.style.pointerEvents = enabled ? 'auto' : 'none';
+        const inp = el.querySelector('input');
+        if (inp) inp.disabled = !enabled;
+      });
+    }
+    optRotate.addEventListener('change', updateUprightLabels);
+    updateUprightLabels();
+
+    // 木箱尺寸输入联动
+    ['c-l','c-w','c-h'].forEach(function(id) {
+      document.getElementById(id).addEventListener('input', updateCrateVol);
+    });
+  }
+
+  return {
+    init, setMode, setStrategy, addBox, removeBox, updateBoxName,
+    saveCurrentBoxSpec, deleteBoxSpec, importBoxSpec,
+    saveCrateSpec, importCrateSpec, deleteCrateSpec,
+    showSpecManager, closeSpecManager, switchSpecTab,
+    calculate, switchTab, switchToVisual, switchScheme,
+    loadHistory, deleteHistory, clearHistoryConfirm,
+    clearAll, exportResult, updateCrateVol,
+    resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers,
+    openSidebar, closeSidebar
+  };
+})();
+
+// ============================================================
+// 提示气泡（独立于模块系统）
+// ============================================================
+(function() {
+  'use strict';
+  let tipOverlay = null;
+  function ensureTipOverlay() {
+    if (!tipOverlay) {
+      tipOverlay = document.createElement('div');
+      tipOverlay.className = 'tip-overlay';
+      document.body.appendChild(tipOverlay);
+    }
+    return tipOverlay;
+  }
+  document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('.tip-icon');
+    if (!icon) return;
+    const tip = icon.dataset.tip;
+    if (!tip) return;
+    const overlay = ensureTipOverlay();
+    const lines = tip.split('\n');
+    overlay.innerHTML = '';
+    let plainMode = true;
+    for (const line of lines) {
+      if (line.startsWith('适用场景：')) {
+        const div = document.createElement('div');
+        div.className = 'tip-head';
+        div.textContent = line;
+        overlay.appendChild(div);
+        plainMode = false;
+      } else if (!plainMode) {
+        const div = document.createElement('div');
+        div.className = 'tip-row';
+        div.textContent = line;
+        overlay.appendChild(div);
+      } else {
+        const div = document.createElement('div');
+        div.style.color = '#e0e0e0';
+        div.textContent = line;
+        overlay.appendChild(div);
+      }
+    }
+    const rect = icon.getBoundingClientRect();
+    overlay.style.left = Math.min(rect.right + 8, window.innerWidth - 280) + 'px';
+    overlay.style.top = rect.top + 'px';
+    overlay.classList.add('show');
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (!e.target.closest('.tip-icon')) return;
+    const overlay = ensureTipOverlay();
+    overlay.classList.remove('show');
+  });
+})();
+
+// ============================================================
+// 启动应用
+// ============================================================
+window.addEventListener('load', function() {
+  App.init();
+});
+</script>
+
+<!-- ====== 规格管理弹窗 ====== -->
+<div class="modal-overlay" id="spec-manager-modal" style="display:none" onclick="App.closeSpecManager(event)">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🗄️ 规格管理</h2>
+      <button class="modal-close" onclick="App.closeSpecManager()">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="modal-tab-box" onclick="App.switchSpecTab('box')">📦 纸箱规格</button>
+      <button class="modal-tab" id="modal-tab-crate" onclick="App.switchSpecTab('crate')">📐 木箱尺寸</button>
+    </div>
+    <div class="modal-body" id="spec-manager-body"></div>
+  </div>
+</div>
+
+<!-- 移动端侧边栏遮罩 -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
+
+</body>
+</html>
