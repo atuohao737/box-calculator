@@ -760,18 +760,26 @@ window.App = (function() {
     const entry = hist[idx];
     if (!entry) return;
     S.currentMode = entry.mode || 'single';
+    // 先恢复 batchMode 和 batchResults，setMode 依赖 batchMode 来决定显示哪种木箱输入区
+    S.batchResults = entry.batchResults || [];
+    S.batchMode = entry.batchResults ? true : false;
     setMode(S.currentMode);
     S.calcResults = entry.calcResults || [];
     S.mixResult = entry.mixResult || null;
-    const ref = entry.calcResults?.[0] || (entry.mixResult ? {
+    // 如果 batchMode 已开启，同步按钮状态
+    if (S.batchMode) {
+      var batchBtn = document.getElementById('batch-mode-btn');
+      if (batchBtn) batchBtn.classList.add('active');
+    }
+    const ref = S.batchResults.length > 0 ? S.batchResults[0] : (entry.calcResults?.[0] || (entry.mixResult ? {
       crateL: entry.mixResult.displayCrateL || entry.mixResult.crateL_raw || entry.mixResult.crateL,
       crateW: entry.mixResult.displayCrateW || entry.mixResult.crateW_raw || entry.mixResult.crateW,
       crateH: entry.mixResult.displayCrateH || entry.mixResult.crateH_raw || entry.mixResult.crateH
-    } : null);
+    } : null));
     if (ref) {
-      document.getElementById('c-l').value = ref.crateL;
-      document.getElementById('c-w').value = ref.crateW;
-      document.getElementById('c-h').value = ref.crateH;
+      document.getElementById('c-l').value = ref.crateL || ref.l;
+      document.getElementById('c-w').value = ref.crateW || ref.w;
+      document.getElementById('c-h').value = ref.crateH || ref.h;
       updateCrateVol();
     }
     UI.renderResults();
@@ -1230,7 +1238,7 @@ window.App = (function() {
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
-    batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
+    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
     // 反推模式
     addReverseCrate, removeReverseCrate, updateReverseCrateName, updateReverseCrateDim,
     batchImportReverseCrates, selectReverseCrate: function(idx) { UI.selectReverseCrate(idx); }

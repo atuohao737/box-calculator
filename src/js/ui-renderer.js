@@ -151,7 +151,7 @@ window.UIRenderer = (function() {
       if (br._bestUtil) bestBadges += '<span class="batch-best-badge" style="background:#52c41a">⭐ 最佳利用率</span>';
       if (br._bestCount) bestBadges += '<span class="batch-best-badge" style="background:#1677ff">📊 最多数量</span>';
 
-      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ')">';
+      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ', true)">';
       html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
       html += '<div class="rc-title">📦 ' + escapeHtml(br.crate.name) + '</div>';
       html += '<div style="font-size:12px;color:#888">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm</div>';
@@ -188,7 +188,7 @@ window.UIRenderer = (function() {
     cont.innerHTML = html;
   }
 
-  function selectBatchCrate(idx) {
+  function selectBatchCrate(idx, switchTo3D) {
     const S = AppState;
     S.batchActiveCrateIdx = idx;
     const br = S.batchResults[idx];
@@ -197,23 +197,24 @@ window.UIRenderer = (function() {
     // 重新渲染卡片，更新高亮状态
     renderBatchResults();
 
-    // 自动切换到3D视图
-    const V3 = Visualizer3D;
-    if (typeof App !== 'undefined' && App.switchTab) {
-      App.switchTab('visual');
-    }
-    // 延迟渲染，确保 V3 初始化完成
-    (function renderWhenReady(retries) {
-      if (V3 && V3.isReady()) {
-        if (S.currentMode === 'mixed' && br.mixResult) {
-          V3.renderMixedScene(br.mixResult);
-        } else if (br.calcResults.length > 0) {
-          V3.renderSingleScene(br.calcResults[0]);
-        }
-      } else if (retries < 15) {
-        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+    // 点击结果卡片时自动切换到3D视图
+    if (switchTo3D) {
+      const V3 = Visualizer3D;
+      if (typeof App !== 'undefined' && App.switchTab) {
+        App.switchTab('visual');
       }
-    })(0);
+      (function renderWhenReady(retries) {
+        if (V3 && V3.isReady()) {
+          if (S.currentMode === 'mixed' && br.mixResult) {
+            V3.renderMixedScene(br.mixResult);
+          } else if (br.calcResults.length > 0) {
+            V3.renderSingleScene(br.calcResults[0]);
+          }
+        } else if (retries < 15) {
+          setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+        }
+      })(0);
+    }
   }
 
   // ============================================================

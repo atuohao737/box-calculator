@@ -2752,7 +2752,7 @@ window.UIRenderer = (function() {
       if (br._bestUtil) bestBadges += '<span class="batch-best-badge" style="background:#52c41a">⭐ 最佳利用率</span>';
       if (br._bestCount) bestBadges += '<span class="batch-best-badge" style="background:#1677ff">📊 最多数量</span>';
 
-      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ')">';
+      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ', true)">';
       html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
       html += '<div class="rc-title">📦 ' + escapeHtml(br.crate.name) + '</div>';
       html += '<div style="font-size:12px;color:#888">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm</div>';
@@ -2789,7 +2789,7 @@ window.UIRenderer = (function() {
     cont.innerHTML = html;
   }
 
-  function selectBatchCrate(idx) {
+  function selectBatchCrate(idx, switchTo3D) {
     const S = AppState;
     S.batchActiveCrateIdx = idx;
     const br = S.batchResults[idx];
@@ -2798,23 +2798,24 @@ window.UIRenderer = (function() {
     // 重新渲染卡片，更新高亮状态
     renderBatchResults();
 
-    // 自动切换到3D视图
-    const V3 = Visualizer3D;
-    if (typeof App !== 'undefined' && App.switchTab) {
-      App.switchTab('visual');
-    }
-    // 延迟渲染，确保 V3 初始化完成
-    (function renderWhenReady(retries) {
-      if (V3 && V3.isReady()) {
-        if (S.currentMode === 'mixed' && br.mixResult) {
-          V3.renderMixedScene(br.mixResult);
-        } else if (br.calcResults.length > 0) {
-          V3.renderSingleScene(br.calcResults[0]);
-        }
-      } else if (retries < 15) {
-        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+    // 点击结果卡片时自动切换到3D视图
+    if (switchTo3D) {
+      const V3 = Visualizer3D;
+      if (typeof App !== 'undefined' && App.switchTab) {
+        App.switchTab('visual');
       }
-    })(0);
+      (function renderWhenReady(retries) {
+        if (V3 && V3.isReady()) {
+          if (S.currentMode === 'mixed' && br.mixResult) {
+            V3.renderMixedScene(br.mixResult);
+          } else if (br.calcResults.length > 0) {
+            V3.renderSingleScene(br.calcResults[0]);
+          }
+        } else if (retries < 15) {
+          setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+        }
+      })(0);
+    }
   }
 
   // ============================================================
@@ -3953,18 +3954,26 @@ window.App = (function() {
     const entry = hist[idx];
     if (!entry) return;
     S.currentMode = entry.mode || 'single';
+    // 先恢复 batchMode 和 batchResults，setMode 依赖 batchMode 来决定显示哪种木箱输入区
+    S.batchResults = entry.batchResults || [];
+    S.batchMode = entry.batchResults ? true : false;
     setMode(S.currentMode);
     S.calcResults = entry.calcResults || [];
     S.mixResult = entry.mixResult || null;
-    const ref = entry.calcResults?.[0] || (entry.mixResult ? {
+    // 如果 batchMode 已开启，同步按钮状态
+    if (S.batchMode) {
+      var batchBtn = document.getElementById('batch-mode-btn');
+      if (batchBtn) batchBtn.classList.add('active');
+    }
+    const ref = S.batchResults.length > 0 ? S.batchResults[0] : (entry.calcResults?.[0] || (entry.mixResult ? {
       crateL: entry.mixResult.displayCrateL || entry.mixResult.crateL_raw || entry.mixResult.crateL,
       crateW: entry.mixResult.displayCrateW || entry.mixResult.crateW_raw || entry.mixResult.crateW,
       crateH: entry.mixResult.displayCrateH || entry.mixResult.crateH_raw || entry.mixResult.crateH
-    } : null);
+    } : null));
     if (ref) {
-      document.getElementById('c-l').value = ref.crateL;
-      document.getElementById('c-w').value = ref.crateW;
-      document.getElementById('c-h').value = ref.crateH;
+      document.getElementById('c-l').value = ref.crateL || ref.l;
+      document.getElementById('c-w').value = ref.crateW || ref.w;
+      document.getElementById('c-h').value = ref.crateH || ref.h;
       updateCrateVol();
     }
     UI.renderResults();
@@ -4423,7 +4432,7 @@ window.App = (function() {
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
-    batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
+    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
     // 反推模式
     addReverseCrate, removeReverseCrate, updateReverseCrateName, updateReverseCrateDim,
     batchImportReverseCrates, selectReverseCrate: function(idx) { UI.selectReverseCrate(idx); }
