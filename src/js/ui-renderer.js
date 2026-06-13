@@ -589,6 +589,8 @@ window.UIRenderer = (function() {
           '<span class="color-dot" style="background:' + cr.box.color + '"></span>' +
           escapeHtml(cr.box.name) + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
         '</button>').join('');
+    } else if (s.currentMode === 'reverse' && s.reverseResult) {
+      cont.innerHTML = '<span style="font-size:12px;color:#bbb">点击木箱卡片查看 3D 布局</span>';
     } else {
       const mr = s.mixResult;
       if (!mr) { cont.innerHTML = '<span style="font-size:12px;color:#bbb">请先计算</span>'; return; }
