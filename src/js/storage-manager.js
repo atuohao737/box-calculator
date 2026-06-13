@@ -28,7 +28,18 @@ window.StorageManager = (function() {
   function saveHistory(entry) {
     let hist = loadHistoryRaw();
     hist.unshift(entry);
-    if (hist.length > 50) hist = hist.slice(0, 50);
+    // 历史记录保护：删除最旧条目直到写入成功或只剩1条
+    while (hist.length > 1) {
+      if (hist.length > 50) { hist = hist.slice(0, 50); continue; }
+      try {
+        localStorage.setItem(KEY_HISTORY, JSON.stringify(hist));
+        return;
+      } catch(e) {
+        // QUOTA_EXCEEDED_ERR 或同级错误 → 删最旧一条
+        hist.pop();
+      }
+    }
+    // 极限情况：只剩1条还写不进去，放弃
     try { localStorage.setItem(KEY_HISTORY, JSON.stringify(hist)); } catch(e) {}
   }
 

@@ -403,11 +403,23 @@ window.Visualizer3D = (function() {
     return group;
   }
 
+  function disposeGroupChildren(group) {
+    while (group.children.length) {
+      var child = group.children[0];
+      if (child.geometry) { child.geometry.dispose(); }
+      if (child.material) {
+        if (Array.isArray(child.material)) { child.material.forEach(function(m) { m.dispose(); }); }
+        else { child.material.dispose(); }
+      }
+      group.remove(child);
+    }
+  }
+
   function clearScene() {
     if (!scene) return;
-    while (crateGroup.children.length) crateGroup.remove(crateGroup.children[0]);
-    while (boxGroup.children.length) boxGroup.remove(boxGroup.children[0]);
-    while (crateDashedGroup.children.length) crateDashedGroup.remove(crateDashedGroup.children[0]);
+    disposeGroupChildren(crateGroup);
+    disposeGroupChildren(boxGroup);
+    disposeGroupChildren(crateDashedGroup);
     clearHoverHighlight();
     instancedMeshMeta = [];
     hideHoverTooltip();
