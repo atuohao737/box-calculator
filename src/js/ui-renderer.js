@@ -291,8 +291,6 @@ window.UIRenderer = (function() {
     var s = AppState;
     s.reverseActiveCrateIdx = idx;
     renderReverseResults();
-
-    // 更新3D视图
     var rr = s.reverseResult;
     if (!rr || !rr.crates || !rr.crates[idx]) return;
     var c = rr.crates[idx];
@@ -303,17 +301,33 @@ window.UIRenderer = (function() {
         x: b.pos.x, y: b.pos.y, z: b.pos.z,
         l: b.pos.l, w: b.pos.w, h: b.pos.h,
         rotated: b.pos.rotated,
-        boxIdx: b.boxIdx
+        boxIdx: b.boxIdx,
+        color: b.box.color,
+        name: b.box.name,
+        origL: b.box.l, origW: b.box.w, origH: b.box.h
       };
     });
+    // 构建 breakdown 用于图例和颜色映射
+    var breakdownMap = {};
+    c.boxes.forEach(function(b) {
+      var key = b.boxIdx;
+      if (!breakdownMap[key]) breakdownMap[key] = { box: b.box, count: 0 };
+      breakdownMap[key].count++;
+    });
+    var breakdown = Object.keys(breakdownMap).map(function(k) { return breakdownMap[k]; });
+    breakdown.sort(function(a, bb) { return bb.count - a.count; });
+
     var mixResultFor3D = {
       crateL: rr.crateL, crateW: rr.crateW, crateH: rr.crateH,
       displayCrateL: rr.crateL, displayCrateW: rr.crateW, displayCrateH: rr.crateH,
       placed: positions,
       totalCount: c.totalCount,
+      utilRate: c.utilRate,
       crateUtilRate: c.utilRate,
+      breakdown: breakdown,
       boxes: c.boxes.map(function(b) { return b.box; }),
-      reverseCrateIdx: idx  // 木箱编号标记
+      reverseCrateIdx: idx,
+      gap: rr.gap || 0
     };
     // 无论当前在哪个tab，都切换到3D视图
     if (typeof App !== 'undefined' && App.switchTab) {
