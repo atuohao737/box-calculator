@@ -905,8 +905,8 @@ window.App = (function() {
     var noQtyBoxes = [];
     for (var qi = 0; qi < activeBoxes.length; qi++) {
       var bq = activeBoxes[qi];
-      var qtyRaw = bq.qty;
-      if (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null || qtyRaw === 0 || qtyRaw === '0') {
+      var qtyNum = parseInt(String(bq.qty).trim(), 10);
+      if (isNaN(qtyNum) || qtyNum <= 0) {
         noQtyBoxes.push(UI.escapeHtml(bq.name));
       }
     }
