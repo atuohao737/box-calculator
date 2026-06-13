@@ -13,6 +13,7 @@ window.UIRenderer = (function() {
 
   function renderBoxList() {
     const s = AppState;
+    s.syncFromDOM();
     s.boxes = s.getBoxValues();
     const list = document.getElementById('box-list');
     const empty = document.getElementById('box-list-empty');

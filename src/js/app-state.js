@@ -35,7 +35,16 @@ window.AppState = (function() {
   function removeBox(id) { boxes = boxes.filter(b => b.id !== id); }
 
   function getBoxValues() {
-    return boxes.map(b => {
+    return boxes.map(b => ({ ...b }));
+  }
+
+  function getCrateValues() {
+    return crates.map(c => ({ ...c }));
+  }
+
+  // 从 DOM 同步纸箱和木箱的实时值到内存（分离 DOM 读取与状态访问）
+  function syncFromDOM() {
+    boxes.forEach(b => {
       const elL = document.getElementById('bl-' + b.id);
       const elW = document.getElementById('bw-' + b.id);
       const elH = document.getElementById('bh-' + b.id);
@@ -44,16 +53,28 @@ window.AppState = (function() {
       const elKU = document.getElementById('bu-' + b.id);
       const elC = document.getElementById('bc-' + b.id);
       const elWt = document.getElementById('bwt-' + b.id);
-      const l = elL && elL.value !== '' ? parseFloat(elL.value) : b.l;
-      const w = elW && elW.value !== '' ? parseFloat(elW.value) : b.w;
-      const h = elH && elH.value !== '' ? parseFloat(elH.value) : b.h;
-      const name = elN ? elN.value : b.name;
-      const qty = elQ ? elQ.value : (b.qty || '');
-      const keepUpright = elKU ? elKU.checked : (b.keepUpright || false);
-      const enabled = elC ? elC.checked : (b.enabled !== false);
-      const weight = elWt && elWt.value !== '' ? parseFloat(elWt.value) : (b.weight || '');
-      return { ...b, l, w, h, name, qty, keepUpright, enabled, weight };
+      b.l = elL && elL.value !== '' ? parseFloat(elL.value) : b.l;
+      b.w = elW && elW.value !== '' ? parseFloat(elW.value) : b.w;
+      b.h = elH && elH.value !== '' ? parseFloat(elH.value) : b.h;
+      b.name = elN ? elN.value : b.name;
+      b.qty = elQ ? elQ.value : (b.qty || '');
+      b.keepUpright = elKU ? elKU.checked : (b.keepUpright || false);
+      b.enabled = elC ? elC.checked : (b.enabled !== false);
+      b.weight = elWt && elWt.value !== '' ? parseFloat(elWt.value) : (b.weight || '');
     });
+    // 同步批量模式下的木箱值
+    if (batchMode) {
+      crates.forEach(function(c) {
+        var elL = document.getElementById('cl-' + c.id);
+        var elW = document.getElementById('cw-' + c.id);
+        var elH = document.getElementById('ch-' + c.id);
+        var elMW = document.getElementById('cmw-' + c.id);
+        c.l = (elL && elL.value !== '') ? parseFloat(elL.value) : c.l;
+        c.w = (elW && elW.value !== '') ? parseFloat(elW.value) : c.w;
+        c.h = (elH && elH.value !== '') ? parseFloat(elH.value) : c.h;
+        c.maxWeight = (elMW && elMW.value !== '') ? parseFloat(elMW.value) : (c.maxWeight || 0);
+      });
+    }
   }
 
   function updateBoxName(id, name) {
@@ -82,19 +103,7 @@ window.AppState = (function() {
 
   function getCrateValues() {
     if (batchMode && crates.length > 0) {
-      return crates.map(c => {
-        const elL = document.getElementById('cl-' + c.id);
-        const elW = document.getElementById('cw-' + c.id);
-        const elH = document.getElementById('ch-' + c.id);
-        const elMW = document.getElementById('cmw-' + c.id);
-        return {
-          ...c,
-          l: (elL && elL.value !== '') ? parseFloat(elL.value) : c.l,
-          w: (elW && elW.value !== '') ? parseFloat(elW.value) : c.w,
-          h: (elH && elH.value !== '') ? parseFloat(elH.value) : c.h,
-          maxWeight: (elMW && elMW.value !== '') ? parseFloat(elMW.value) : (c.maxWeight || 0)
-        };
-      });
+      return crates.map(c => ({ ...c }));
     }
     // 非批量模式，返回单木箱
     const l = parseFloat(document.getElementById('c-l').value) || 0;
@@ -155,6 +164,7 @@ window.AppState = (function() {
     get reverseCrateList() { return reverseCrateList; },
     set reverseCrateList(v) { reverseCrateList = v; },
     addBox, removeBox, getBoxValues, updateBoxName, toggleBoxEnabled, reset,
-    addCrate, removeCrate, getCrateValues, updateCrateName
+    addCrate, removeCrate, getCrateValues, updateCrateName,
+    syncFromDOM
   };
 })();

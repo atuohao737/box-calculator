@@ -359,6 +359,7 @@ window.App = (function() {
     var allowRotate = document.getElementById('opt-rotate').checked;
     var retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
 
+    S.syncFromDOM();
     var currentBoxes = S.getBoxValues();
     if (currentBoxes.length === 0) { UI.showError('请至少添加一种纸箱'); return; }
     var activeBoxes = currentBoxes.filter(b => b.enabled !== false);
@@ -776,6 +777,7 @@ window.App = (function() {
 
   function calcReverse() {
     // 获取纸箱列表
+    S.syncFromDOM();
     var currentBoxes = S.getBoxValues();
     if (currentBoxes.length === 0) { UI.showError('请至少添加一种纸箱'); return; }
     var activeBoxes = currentBoxes.filter(function(b) { return b.enabled !== false; });
