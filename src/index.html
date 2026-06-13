@@ -325,5 +325,18 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- 移动端侧边栏遮罩 -->
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
 
+<!-- 计算进度遮罩 -->
+<div class="calc-overlay" id="calc-overlay">
+  <div class="calc-progress-card">
+    <div class="calc-progress-spinner"></div>
+    <div class="calc-progress-title">正在计算...</div>
+    <div class="calc-progress-sub" id="calc-progress-sub">请稍候</div>
+    <div class="calc-progress-bar-wrap">
+      <div class="calc-progress-bar" id="calc-progress-bar" style="width:0%"></div>
+    </div>
+    <div class="calc-progress-time" id="calc-progress-time">0.0s</div>
+  </div>
+</div>
+
 </body>
 </html>

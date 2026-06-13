@@ -675,7 +675,7 @@ window.Visualizer3D = (function() {
     const tailCount = result.count - mainCount;
     const tailInfo = tailCount > 0 ? '<br>含旋转填充: <b style="color:#fa8c16">+' + tailCount + ' 个</b>' : '';
     const info = document.getElementById('canvas-info');
-    info.innerHTML = '<b>' + box.name + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
+    info.innerHTML = '<b>' + escapeHtml(box.name) + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
     document.getElementById('legend-overlay').style.display = 'none';
     wireframeMode = false;
   }
@@ -756,14 +756,14 @@ window.Visualizer3D = (function() {
 
     const info = document.getElementById('canvas-info');
     const breakdownHtml = mr.breakdown.filter(b => b.count > 0).map(b => {
-      return b.box.name + ': <b>' + b.count + '个</b>';
+      return escapeHtml(b.box.name) + ': <b>' + b.count + '个</b>';
     }).join('<br>');
     info.innerHTML = '<b>🎲 混装方案</b><br>总装入: <b>' + mr.totalCount + ' 个</b><br>' + breakdownHtml + '<br>利用率: <b style="color:#52c41a">' + (mr.utilRate * 100).toFixed(1) + '%</b>';
 
     const legendEl = document.getElementById('legend-overlay');
     legendEl.style.display = 'block';
     legendEl.innerHTML = mr.breakdown.filter(b => b.count > 0).map(b =>
-      '<div class="legend-item"><div class="legend-dot" style="background:' + b.box.color + '"></div>' + b.box.name + ': ' + b.count + '个</div>'
+      '<div class="legend-item"><div class="legend-dot" style="background:' + b.box.color + '"></div>' + escapeHtml(b.box.name) + ': ' + b.count + '个</div>'
     ).join('');
     wireframeMode = false;
   }
@@ -791,7 +791,7 @@ window.Visualizer3D = (function() {
       resizeIfNeeded: noop, clearScene: noop,
       renderSingleScene: noop, renderMixedScene: noop,
       resetCamera: noop, toggleWireframe: noop,
-      toggleCrateVis: noop, toggleOrientationMarkers: noop
+      toggleCrateVis: noop, toggleOrientationMarkers: noop, toggleCrateDashed: noop
     };
   }
 })();

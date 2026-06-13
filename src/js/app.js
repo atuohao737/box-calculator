@@ -305,7 +305,43 @@ window.App = (function() {
   }
 
   // ============================================================
-  // 计算（支持批量模式）
+  // 计算进度管理
+  // ============================================================
+  var _calcStartTime = 0;
+  var _calcTimerInterval = null;
+
+  function showCalcProgress(subText) {
+    var overlay = document.getElementById('calc-overlay');
+    var sub = document.getElementById('calc-progress-sub');
+    var bar = document.getElementById('calc-progress-bar');
+    var timeEl = document.getElementById('calc-progress-time');
+    if (overlay) overlay.classList.add('show');
+    if (sub) sub.textContent = subText || '请稍候';
+    if (bar) bar.style.width = '0%';
+    if (timeEl) timeEl.textContent = '0.0s';
+    _calcStartTime = Date.now();
+    _calcTimerInterval = setInterval(function() {
+      var elapsed = ((Date.now() - _calcStartTime) / 1000).toFixed(1);
+      if (timeEl) timeEl.textContent = elapsed + 's';
+    }, 100);
+  }
+
+  function updateCalcProgress(current, total, subText) {
+    var sub = document.getElementById('calc-progress-sub');
+    var bar = document.getElementById('calc-progress-bar');
+    var pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    if (sub) sub.textContent = subText || '';
+    if (bar) bar.style.width = pct + '%';
+  }
+
+  function hideCalcProgress() {
+    var overlay = document.getElementById('calc-overlay');
+    if (overlay) overlay.classList.remove('show');
+    if (_calcTimerInterval) { clearInterval(_calcTimerInterval); _calcTimerInterval = null; }
+  }
+
+  // ============================================================
+  // 计算（支持批量模式，含进度显示）
   // ============================================================
   function calculate() {
     // 反推模式走独立计算流程
@@ -314,36 +350,37 @@ window.App = (function() {
       return;
     }
 
-    const errDiv = document.getElementById('calc-error');
+    var errDiv = document.getElementById('calc-error');
     errDiv.style.display = 'none';
     errDiv.innerHTML = '';
 
-    const gap = parseFloat(document.getElementById('opt-gap').value) || 0;
-    const layerGap = parseFloat(document.getElementById('opt-layer-gap').value) || 0;
-    const allowRotate = document.getElementById('opt-rotate').checked;
-    const retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
+    var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+    var layerGap = parseFloat(document.getElementById('opt-layer-gap').value) || 0;
+    var allowRotate = document.getElementById('opt-rotate').checked;
+    var retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
 
-    const currentBoxes = S.getBoxValues();
+    var currentBoxes = S.getBoxValues();
     if (currentBoxes.length === 0) { UI.showError('请至少添加一种纸箱'); return; }
-    const activeBoxes = currentBoxes.filter(b => b.enabled !== false);
+    var activeBoxes = currentBoxes.filter(b => b.enabled !== false);
     if (activeBoxes.length === 0) { UI.showError('请至少勾选一种纸箱参与计算'); return; }
 
-    const errors = [];
-    for (const b of activeBoxes) {
+    var errors = [];
+    for (var ei = 0; ei < activeBoxes.length; ei++) {
+      var b = activeBoxes[ei];
       if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0)
-        errors.push(b.name + ' 的尺寸不完整');
+        errors.push(UI.escapeHtml(b.name) + ' 的尺寸不完整');
     }
     if (errors.length) { UI.showError(errors.join('<br>')); return; }
 
     // 获取木箱列表
-    let crateList;
+    var crateList;
     if (S.batchMode) {
       crateList = S.getCrateValues();
       if (crateList.length === 0) { UI.showError('请至少添加一种木箱规格'); return; }
-      // 验证木箱尺寸
-      for (const c of crateList) {
-        if (!c.l || !c.w || !c.h || c.l <= 0 || c.w <= 0 || c.h <= 0) {
-          UI.showError('木箱 "' + c.name + '" 尺寸不完整'); return;
+      for (var ci2 = 0; ci2 < crateList.length; ci2++) {
+        var c2 = crateList[ci2];
+        if (!c2.l || !c2.w || !c2.h || c2.l <= 0 || c2.w <= 0 || c2.h <= 0) {
+          UI.showError('木箱 "' + UI.escapeHtml(c2.name) + '" 尺寸不完整'); return;
         }
       }
     } else {
@@ -353,123 +390,168 @@ window.App = (function() {
       }
     }
 
+    // 显示进度条，然后用 setTimeout 让浏览器先渲染
+    var modeLabel = S.currentMode === 'single' ? '单品对比' : '混装';
+    var totalCrates = crateList.length;
+    showCalcProgress(modeLabel + ' · 准备计算...');
+
+    setTimeout(function() {
+      _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel);
+    }, 60);
+  }
+
+  function _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel) {
     S.batchResults = [];
     S.calcResults = [];
     S.mixResult = null;
 
-    // 对每种木箱分别计算
-    for (let ci = 0; ci < crateList.length; ci++) {
-      const crate = crateList[ci];
-      const cL = parseFloat(crate.l);
-      const cW = parseFloat(crate.w);
-      const cH = parseFloat(crate.h);
-      const maxWeight = parseFloat(crate.maxWeight) || 0;
+    var ci = 0;
 
-      let crCalcResults = [];
-      let crMixResult = null;
+    function processNextCrate() {
+      try {
+        if (ci >= crateList.length) {
+          // 全部计算完毕
+          finishCalc();
+          return;
+        }
 
-      if (S.currentMode === 'single') {
-        const sortedBoxes = [...activeBoxes].sort(function(a, b) {
-          const wa = parseFloat(a.weight) || 0, wb = parseFloat(b.weight) || 0;
-          return wb - wa;
-        });
-        crCalcResults = sortedBoxes.map(function(b) {
-          const res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
-          const bw = parseFloat(b.weight) || 0;
-          const totalWeight = res ? res.count * bw : 0;
-          const weightLimited = maxWeight > 0 && totalWeight > maxWeight;
-          if (res && weightLimited) {
-            const maxCountByWeight = Math.floor(maxWeight / bw);
-            res.weightLimited = true;
-            res.originalCount = res.count;
-            res.maxWeight = maxWeight;
-            res.totalWeight = maxWeight;
-            res.weightRate = 1.0;
-            if (maxCountByWeight < res.count) {
-              res.count = maxCountByWeight;
-              const volRatio = maxCountByWeight / res.originalCount;
-              res.utilRate = res.utilRate * volRatio;
+        var crate = crateList[ci];
+        var cL = parseFloat(crate.l);
+        var cW = parseFloat(crate.w);
+        var cH = parseFloat(crate.h);
+        var maxWeight = parseFloat(crate.maxWeight) || 0;
+
+        // 更新进度
+        var progressText = modeLabel + ' · 正在计算 ' + (ci + 1) + '/' + totalCrates + ' 号木箱';
+        updateCalcProgress(ci + 1, totalCrates, progressText);
+
+        var crCalcResults = [];
+        var crMixResult = null;
+
+        if (S.currentMode === 'single') {
+          var sortedBoxes = activeBoxes.slice().sort(function(a, b2) {
+            var wa = parseFloat(a.weight) || 0, wb = parseFloat(b2.weight) || 0;
+            return wb - wa;
+          });
+          crCalcResults = sortedBoxes.map(function(b) {
+            var res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            var bw = parseFloat(b.weight) || 0;
+            var totalWeight = res ? res.count * bw : 0;
+            var weightLimited = maxWeight > 0 && totalWeight > maxWeight;
+            if (res && weightLimited) {
+              var maxCountByWeight = Math.floor(maxWeight / bw);
+              res.weightLimited = true;
+              res.originalCount = res.count;
+              res.maxWeight = maxWeight;
+              res.totalWeight = maxWeight;
+              res.weightRate = 1.0;
+              if (maxCountByWeight < res.count) {
+                res.count = maxCountByWeight;
+                var volRatio = maxCountByWeight / res.originalCount;
+                res.utilRate = res.utilRate * volRatio;
+              }
+            } else if (res && maxWeight > 0) {
+              res.totalWeight = totalWeight;
+              res.maxWeight = maxWeight;
+              res.weightRate = totalWeight / maxWeight;
+              res.weightLimited = false;
             }
-          } else if (res && maxWeight > 0) {
-            res.totalWeight = totalWeight;
-            res.maxWeight = maxWeight;
-            res.weightRate = totalWeight / maxWeight;
-            res.weightLimited = false;
+            return { box: b, crateL: cL, crateW: cW, crateH: cH, gap: gap, result: res };
+          });
+          var bestIdx = 0;
+          for (var i = 1; i < crCalcResults.length; i++) {
+            var a2 = crCalcResults[i].result, b3 = crCalcResults[bestIdx].result;
+            if (!b3 || (a2 && a2.count > b3.count)) bestIdx = i;
+            else if (a2 && b3 && a2.count === b3.count && a2.utilRate > b3.utilRate) bestIdx = i;
           }
-          return { box: b, crateL: cL, crateW: cW, crateH: cH, gap, result: res };
-        });
-        let bestIdx = 0;
-        for (let i = 1; i < crCalcResults.length; i++) {
-          const a = crCalcResults[i].result, b2 = crCalcResults[bestIdx].result;
-          if (!b2 || (a && a.count > b2.count)) bestIdx = i;
-          else if (a && b2 && a.count === b2.count && a.utilRate > b2.utilRate) bestIdx = i;
-        }
-        if (crCalcResults[bestIdx] && crCalcResults[bestIdx].result) crCalcResults[bestIdx].isBest = true;
-      } else {
-        const sortedBoxes = [...activeBoxes].sort(function(a, b) {
-          const wa = parseFloat(a.weight) || 0, wb = parseFloat(b.weight) || 0;
-          return wb - wa;
-        });
-        const boxConfigs = sortedBoxes.map(function(b) {
-          const qtyRaw = b.qty;
-          const qty = (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null) ? null : Math.max(1, parseInt(qtyRaw) || 1);
-          return { box: b, qty };
-        });
-        crMixResult = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
-        if (crMixResult) {
-          crMixResult.displayCrateL = cL;
-          crMixResult.displayCrateW = cW;
-          crMixResult.displayCrateH = cH;
-          crMixResult.strategy = S.mixStrategy;
-          if (maxWeight > 0) {
-            let totalW = 0;
-            (crMixResult.placed || []).forEach(function(p) {
-              const bw = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
-              totalW += bw;
-            });
-            crMixResult.totalWeight = totalW;
-            crMixResult.maxWeight = maxWeight;
-            crMixResult.weightRate = totalW / maxWeight;
-            crMixResult.weightOverLimit = totalW > maxWeight;
+          if (crCalcResults[bestIdx] && crCalcResults[bestIdx].result) crCalcResults[bestIdx].isBest = true;
+        } else {
+          var sortedBoxes2 = activeBoxes.slice().sort(function(a, b2) {
+            var wa = parseFloat(a.weight) || 0, wb = parseFloat(b2.weight) || 0;
+            return wb - wa;
+          });
+          var boxConfigs = sortedBoxes2.map(function(b) {
+            var qtyRaw = b.qty;
+            var qty = (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null) ? null : Math.max(1, parseInt(qtyRaw) || 1);
+            return { box: b, qty: qty };
+          });
+          crMixResult = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+          if (crMixResult) {
+            crMixResult.displayCrateL = cL;
+            crMixResult.displayCrateW = cW;
+            crMixResult.displayCrateH = cH;
+            crMixResult.strategy = S.mixStrategy;
+            if (maxWeight > 0) {
+              var totalW = 0;
+              (crMixResult.placed || []).forEach(function(p) {
+                var bw2 = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
+                totalW += bw2;
+              });
+              crMixResult.totalWeight = totalW;
+              crMixResult.maxWeight = maxWeight;
+              crMixResult.weightRate = totalW / maxWeight;
+              crMixResult.weightOverLimit = totalW > maxWeight;
+            }
           }
         }
-      }
 
-      S.batchResults.push({
-        crate: crate,
-        calcResults: crCalcResults,
-        mixResult: crMixResult
-      });
-    }
+        S.batchResults.push({
+          crate: crate,
+          calcResults: crCalcResults,
+          mixResult: crMixResult
+        });
 
-    // 批量模式下标记推荐
-    if (S.batchMode && S.batchResults.length > 1) {
-      markBatchRecommendations();
-    }
+        ci++;
 
-    // 非批量模式，把第一个结果赋给旧字段以兼容渲染
-    if (!S.batchMode && S.batchResults.length > 0) {
-      const br = S.batchResults[0];
-      S.calcResults = br.calcResults;
-      S.mixResult = br.mixResult;
-    }
-
-    SM.saveHistory({ mode: S.currentMode, calcResults: S.calcResults, mixResult: S.mixResult, batchResults: S.batchMode ? S.batchResults : null, timestamp: Date.now() });
-    UI.renderResults();
-    UI.renderSchemaTabs();
-    S.currentSchemeIdx = 0;
-    S.batchActiveCrateIdx = 0;
-
-    const isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady()) {
-      if (S.currentMode === 'mixed' && S.mixResult) {
-        V3.renderMixedScene(S.mixResult);
-      } else if (S.calcResults.length > 0) {
-        V3.renderSingleScene(S.calcResults[0]);
+        // 批量模式下，每个木箱之间让出主线程让进度条更新
+        if (ci < crateList.length) {
+          setTimeout(processNextCrate, 0);
+        } else {
+          finishCalc();
+        }
+      } catch(e) {
+        hideCalcProgress();
+        console.error('[App] 计算出错:', e);
       }
     }
-    closeSidebar();
-    switchTab('results');
+
+    function finishCalc() {
+      try {
+        // 批量模式下标记推荐
+        if (S.batchMode && S.batchResults.length > 1) {
+          markBatchRecommendations();
+        }
+
+        // 非批量模式，把第一个结果赋给旧字段以兼容渲染
+        if (!S.batchMode && S.batchResults.length > 0) {
+          var br = S.batchResults[0];
+          S.calcResults = br.calcResults;
+          S.mixResult = br.mixResult;
+        }
+
+        SM.saveHistory({ mode: S.currentMode, calcResults: S.calcResults, mixResult: S.mixResult, batchResults: S.batchMode ? S.batchResults : null, timestamp: Date.now() });
+        UI.renderResults();
+        UI.renderSchemaTabs();
+        S.currentSchemeIdx = 0;
+        S.batchActiveCrateIdx = 0;
+
+        var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
+        if (isVisualActive && V3.isReady()) {
+          if (S.currentMode === 'mixed' && S.mixResult) {
+            V3.renderMixedScene(S.mixResult);
+          } else if (S.calcResults.length > 0) {
+            V3.renderSingleScene(S.calcResults[0]);
+          }
+        }
+        closeSidebar();
+        switchTab('results');
+      } finally {
+        hideCalcProgress();
+      }
+    }
+
+    // 启动计算
+    processNextCrate();
   }
 
   // 批量推荐逻辑
@@ -703,7 +785,7 @@ window.App = (function() {
     for (var i = 0; i < activeBoxes.length; i++) {
       var b = activeBoxes[i];
       if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0) {
-        UI.showError(b.name + ' 的尺寸不完整'); return;
+        UI.showError(UI.escapeHtml(b.name) + ' 的尺寸不完整'); return;
       }
     }
 
@@ -731,43 +813,54 @@ window.App = (function() {
       return { box: b, qty: qty };
     });
 
-    // 对每种木箱尺寸运行FFD反推
-    var allResults = PE.calcReverseCompare(crateList, boxConfigs, gap, allowRotate);
+    // 显示进度条
+    showCalcProgress('木箱反推 · 准备计算...');
 
-    // 只展示推荐的最佳方案（数量最少）
-    S.reverseResult = allResults.length > 0 ? allResults[0] : null;
-    S.reverseAllResults = allResults;
-    S.reverseActiveCrateIdx = 0;
+    setTimeout(function() {
+      try {
+        updateCalcProgress(1, 1, '木箱反推 · 正在计算 ' + crateList.length + ' 种木箱');
 
-    UI.renderReverseResults();
+        // 对每种木箱尺寸运行FFD反推
+        var allResults = PE.calcReverseCompare(crateList, boxConfigs, gap, allowRotate);
 
-    // 保存历史
-    SM.saveHistory({ mode: 'reverse', reverseResult: S.reverseResult, timestamp: Date.now() });
+        // 只展示推荐的最佳方案（数量最少）
+        S.reverseResult = allResults.length > 0 ? allResults[0] : null;
+        S.reverseAllResults = allResults;
+        S.reverseActiveCrateIdx = 0;
 
-    // 渲染3D
-    var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady() && S.reverseResult && S.reverseResult.crates.length > 0) {
-      UI.selectReverseCrate(0);
-    }
+        UI.renderReverseResults();
 
-    closeSidebar();
-    switchTab('results');
+        // 保存历史
+        SM.saveHistory({ mode: 'reverse', reverseResult: S.reverseResult, timestamp: Date.now() });
 
-    // 滚动到结果区域，让用户看到变化
-    if (S.reverseResult && S.reverseResult.crates.length > 0) {
-      setTimeout(function() {
-        var resultsEl = document.getElementById('results-content');
-        if (resultsEl) {
-          resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          // 闪烁高亮效果
-          resultsEl.style.transition = 'box-shadow 0.3s';
-          resultsEl.style.boxShadow = '0 0 0 3px #1677ff';
-          setTimeout(function() {
-            resultsEl.style.boxShadow = 'none';
-          }, 600);
+        // 渲染3D
+        var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
+        if (isVisualActive && V3.isReady() && S.reverseResult && S.reverseResult.crates.length > 0) {
+          UI.selectReverseCrate(0);
         }
-      }, 200);
-    }
+
+        closeSidebar();
+        switchTab('results');
+
+        // 滚动到结果区域，让用户看到变化
+        if (S.reverseResult && S.reverseResult.crates.length > 0) {
+          setTimeout(function() {
+            var resultsEl = document.getElementById('results-content');
+            if (resultsEl) {
+              resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              // 闪烁高亮效果
+              resultsEl.style.transition = 'box-shadow 0.3s';
+              resultsEl.style.boxShadow = '0 0 0 3px #1677ff';
+              setTimeout(function() {
+                resultsEl.style.boxShadow = 'none';
+              }, 600);
+            }
+          }, 200);
+        }
+      } finally {
+        hideCalcProgress();
+      }
+    }, 60);
   }
 
   function selectReverseCrate(idx) {
@@ -1014,7 +1107,7 @@ window.App = (function() {
       calculate: function(){}, switchTab: function(){}, switchToVisual: function(){}, switchScheme: function(){},
       loadHistory: function(){}, deleteHistory: function(){}, clearHistoryConfirm: function(){},
       clearAll: function(){}, exportResult: function(){}, updateCrateVol: function(){},
-      resetCamera: function(){}, toggleWireframe: function(){}, toggleCrateVis: function(){}, toggleOrientationMarkers: function(){},
+      resetCamera: function(){}, toggleWireframe: function(){}, toggleCrateVis: function(){}, toggleOrientationMarkers: function(){}, toggleCrateDashed: function(){},
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
       updateCrateVolUI: function(){}, updateCrateNameUI: function(){},

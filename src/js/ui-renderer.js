@@ -5,6 +5,12 @@ window.UIRenderer = (function() {
   'use strict';
   try {
 
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   function renderBoxList() {
     const s = AppState;
     s.boxes = s.getBoxValues();
@@ -130,7 +136,7 @@ window.UIRenderer = (function() {
       const rowClass = br._bestUtil ? 'best-row' : '';
 
       return '<tr class="' + rowClass + '" onclick="App.selectBatchCrate(' + i + ')" id="batch-row-' + i + '">' +
-        '<td><span class="color-dot" style="background:' + br.crate.color + '"></span> ' + br.crate.name + '</td>' +
+        '<td><span class="color-dot" style="background:' + br.crate.color + '"></span> ' + escapeHtml(br.crate.name) + '</td>' +
         '<td class="dim-mono">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + '</td>' +
         '<td>' + vol + ' m³</td>' +
         '<td style="font-weight:600;color:#1677ff">' + (maxCount || '-') + '</td>' +
@@ -149,7 +155,7 @@ window.UIRenderer = (function() {
     let detailHtml = '';
     if (activeBR) {
       detailHtml = '<div class="batch-detail-section">' +
-        '<div class="batch-detail-title"><span class="color-dot" style="background:' + activeBR.crate.color + '"></span>' + activeBR.crate.name + ' (' + activeBR.crate.l + '×' + activeBR.crate.w + '×' + activeBR.crate.h + ' mm) 详情</div>';
+        '<div class="batch-detail-title"><span class="color-dot" style="background:' + activeBR.crate.color + '"></span>' + escapeHtml(activeBR.crate.name) + ' (' + activeBR.crate.l + '×' + activeBR.crate.w + '×' + activeBR.crate.h + ' mm) 详情</div>';
       if (isMixed) {
         if (activeBR.mixResult && activeBR.mixResult.totalCount > 0) {
           detailHtml += renderMixedCard(activeBR.mixResult);
@@ -306,7 +312,7 @@ window.UIRenderer = (function() {
   function renderSingleCard(cr, idx) {
     const { box, result, isBest, crateL, crateW, crateH } = cr;
     if (!result || result.count === 0) {
-      return '<div class="result-card"><div class="result-card-header"><div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name + '</div></div><div style="color:#ff4d4f;font-size:13px;background:#fff2f0;border-radius:8px;padding:10px">纸箱尺寸超过木箱内径，无法装入</div></div>';
+      return '<div class="result-card"><div class="result-card-header"><div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + escapeHtml(box.name) + '</div></div><div style="color:#ff4d4f;font-size:13px;background:#fff2f0;border-radius:8px;padding:10px">纸箱尺寸超过木箱内径，无法装入</div></div>';
     }
     const util = (result.utilRate * 100).toFixed(1);
     const utilColor = result.utilRate > 0.7 ? '#52c41a' : result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
@@ -328,7 +334,7 @@ window.UIRenderer = (function() {
 
     return '<div class="result-card ' + (isBest ? 'best' : '') + '" onclick="App.switchToVisual(' + idx + ')">' +
       '<div class="result-card-header">' +
-        '<div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name +
+        '<div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + escapeHtml(box.name) +
           (result.isRotated ? '<span class="tag-rotate">↻ 旋转</span>' : '') +
           (isBest ? '<span class="best-badge">最优</span>' : '') +
         '</div>' +
@@ -375,7 +381,7 @@ window.UIRenderer = (function() {
         dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转 | ' + Array.from(placedByBoxIdx[i].dims).join(' | ') + '</span>';
       }
       return '<div class="mix-breakdown-row">' +
-        '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + b.box.name + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +
+        '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + escapeHtml(b.box.name) + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +
         '<div class="mbd-count">' + b.count + ' 个</div>' +
         '<div class="mbd-pct">' + pct + '%</div>' +
       '</div>';
@@ -383,7 +389,7 @@ window.UIRenderer = (function() {
 
     const unmet = mr.breakdown.filter(b => b.requested !== null && b.count < b.requested);
     const unmetHtml = unmet.length > 0
-      ? '<div style="margin-top:8px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px;font-size:12px;color:#875800">⚠️ 以下纸箱未能完全满足需求：' + unmet.map(b => b.box.name + ' 差 ' + (b.requested - b.count) + ' 个').join('、') + '</div>' : '';
+      ? '<div style="margin-top:8px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px;font-size:12px;color:#875800">⚠️ 以下纸箱未能完全满足需求：' + unmet.map(b => escapeHtml(b.box.name) + ' 差 ' + (b.requested - b.count) + ' 个').join('、') + '</div>' : '';
 
     const strategyLabel = mr.strategy === 'util' ? '<span class="tag-strategy util">📐 空间优先</span>' : '<span class="tag-strategy">📊 数量优先</span>';
     const strategyHint = mr.strategy === 'util'
@@ -431,7 +437,7 @@ window.UIRenderer = (function() {
       cont.innerHTML = s.batchResults.map(function(br, i) {
         return '<button class="scheme-tab ' + (i === s.batchActiveCrateIdx ? 'active' : '') + '" onclick="App.selectBatchCrate(' + i + ')">' +
           '<span class="color-dot" style="background:' + br.crate.color + '"></span>' +
-          br.crate.name + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
+          escapeHtml(br.crate.name) + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
         '</button>';
       }).join('');
       return;
@@ -445,7 +451,7 @@ window.UIRenderer = (function() {
       cont.innerHTML = s.calcResults.map((cr, i) =>
         '<button class="scheme-tab ' + (i === s.currentSchemeIdx ? 'active' : '') + '" onclick="App.switchScheme(' + i + ')">' +
           '<span class="color-dot" style="background:' + cr.box.color + '"></span>' +
-          cr.box.name + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
+          escapeHtml(cr.box.name) + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
         '</button>').join('');
     } else {
       const mr = s.mixResult;
@@ -535,7 +541,7 @@ window.UIRenderer = (function() {
     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
   }
 
-  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate };
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate, escapeHtml };
   } catch(e) {
     console.error('[UIRenderer] 模块初始化失败:', e.message);
     var noop = function() {};

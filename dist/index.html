@@ -280,7 +280,21 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   .modal-content { width: 95vw; max-height: 85vh; }
 }
 
-@media (max-width: 400px) {
+/* 计算进度遮罩 */
+.calc-overlay { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.35); align-items: center; justify-content: center; }
+.calc-overlay.show { display: flex; }
+.calc-progress-card { background: #fff; border-radius: 16px; padding: 32px 40px; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,0.2); min-width: 280px; }
+.calc-progress-spinner { width: 40px; height: 40px; border: 3px solid #e8e8e8; border-top-color: #1677ff; border-radius: 50%; margin: 0 auto 16px; animation: calc-spin 0.8s linear infinite; }
+@keyframes calc-spin { to { transform: rotate(360deg); } }
+.calc-progress-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 6px; }
+.calc-progress-sub { font-size: 12px; color: #888; margin-bottom: 14px; }
+.calc-progress-bar-wrap { height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.calc-progress-bar { height: 100%; background: linear-gradient(90deg, #1677ff, #4096ff); border-radius: 3px; transition: width 0.3s ease; }
+.calc-progress-time { font-size: 12px; color: #bbb; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+  .calc-progress-card { padding: 24px 28px; min-width: 240px; }
+}
   .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .header-actions { gap: 4px; }
   .header-actions .btn { padding: 4px 6px; font-size: 10px; }
@@ -1260,7 +1274,138 @@ window.PackingEngine = (function() {
       }
     }
 
+    // 间隙填充：对最优结果扫描剩余空隙，尝试塞入更多纸箱
+    if (bestResult && bestResult.totalCount > 0) {
+      var filled = fillGaps(bestResult, boxConfigs, crateL, crateW, crateH, gap, allowRotate);
+      if (filled) bestResult = filled;
+    }
+
     return bestResult;
+  }
+
+  // ============================================================
+  // 间隙填充：主算法结束后，扫描剩余空隙尝试塞入更多纸箱
+  // ============================================================
+  function fillGaps(result, boxConfigs, crateL, crateW, crateH, gap, allowRotate) {
+    if (!result || !result.placed || result.placed.length === 0) return result;
+
+    const cL = crateL - gap * 2;
+    const cW = crateW - gap * 2;
+    const cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return result;
+
+    // 已放置纸箱 → occupied 列表（归一化为 [0, cL] 坐标系，与 collectKeyPoints 的 max 参数一致）
+    const occupied = result.placed.map(function(p) {
+      return { x: p.x - gap, y: p.y - gap, z: p.z - gap, x2: p.x + p.l - gap, y2: p.y + p.w - gap, z2: p.z + p.h - gap };
+    });
+
+    // 收集剩余需求
+    const demands = [];
+    for (var i = 0; i < boxConfigs.length; i++) {
+      var bc = boxConfigs[i];
+      var placedCount = 0;
+      for (var j = 0; j < result.placed.length; j++) {
+        if (result.placed[j].boxIdx === i) placedCount++;
+      }
+      var remaining = bc.qty === null ? Infinity : bc.qty - placedCount;
+      if (remaining > 0 || bc.qty === null) {
+        demands.push({ bc: bc, idx: i, remaining: bc.qty === null ? Infinity : remaining });
+      }
+    }
+    if (demands.length === 0) return result;
+
+    // 按纸箱体积从大到小尝试（大箱填隙更易成功）
+    demands.sort(function(a, b) {
+      var va = a.bc.box.l * a.bc.box.w * a.bc.box.h;
+      var vb = b.bc.box.l * b.bc.box.w * b.bc.box.h;
+      return vb - va;
+    });
+
+    var kp = collectKeyPoints(occupied, cL, cW, cH);
+    var maxGapIter = 2000; // 防止死循环
+
+    for (var di = 0; di < demands.length; di++) {
+      var dem = demands[di];
+      var bc = dem.bc;
+      var keepUpright = bc.box.keepUpright === true;
+      var rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+
+      var filled = true;
+      while (filled && dem.remaining > 0 && maxGapIter-- > 0) {
+        filled = false;
+        for (var ri = 0; ri < rots.length; ri++) {
+          var rot = rots[ri];
+          var rl = rot[0], rw = rot[1], rh = rot[2];
+          if (rl > cL || rw > cW || rh > cH) continue;
+
+          outer:
+          for (var zi = 0; zi < kp.zs.length; zi++) {
+            var z = kp.zs[zi];
+            if (z + rh > cH) break;
+            for (var yi = 0; yi < kp.ys.length; yi++) {
+              var y = kp.ys[yi];
+              if (y + rw > cW) break;
+              for (var xi = 0; xi < kp.xs.length; xi++) {
+                var x = kp.xs[xi];
+                if (x + rl > cL) break;
+
+                if (isOccupied(occupied, x, y, z, rl, rw, rh)) continue;
+                if (!isSupported(occupied, x, y, z, rl, rw)) continue;
+
+                // 归一化坐标系下只需检查 [0, cL] 范围，gap 已在归一化时消去
+                if (x < 0 || y < 0 || z < 0) continue;
+                if (x + rl > cL || y + rw > cW || z + rh > cH) continue;
+
+                // 放置！坐标加回 gap 还原物理位置
+                var isRot = !(rl === bc.box.l && rw === bc.box.w && rh === bc.box.h);
+                result.placed.push({
+                  x: x + gap, y: y + gap, z: z + gap,
+                  l: rl, w: rw, h: rh,
+                  boxIdx: dem.idx,
+                  color: bc.box.color,
+                  name: bc.box.name,
+                  rotated: isRot
+                });
+                occupied.push({ x: x, y: y, z: z, x2: x + rl, y2: y + rw, z2: z + rh });
+                dem.remaining--;
+                filled = true;
+
+                // 更新离散坐标点
+                if (kp.xs.indexOf(x) === -1) { kp.xs.push(x); kp.xs.sort(function(a, b) { return a - b; }); }
+                if (kp.xs.indexOf(x + rl) === -1) { kp.xs.push(x + rl); kp.xs.sort(function(a, b) { return a - b; }); }
+                if (kp.ys.indexOf(y) === -1) { kp.ys.push(y); kp.ys.sort(function(a, b) { return a - b; }); }
+                if (kp.ys.indexOf(y + rw) === -1) { kp.ys.push(y + rw); kp.ys.sort(function(a, b) { return a - b; }); }
+                if (kp.zs.indexOf(z) === -1) { kp.zs.push(z); kp.zs.sort(function(a, b) { return a - b; }); }
+                if (kp.zs.indexOf(z + rh) === -1) { kp.zs.push(z + rh); kp.zs.sort(function(a, b) { return a - b; }); }
+
+                break outer;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 更新 result 统计
+    result.totalCount = result.placed.length;
+    var totalVol = cL * cW * cH;
+    var usedVol = 0;
+    for (var pi = 0; pi < result.placed.length; pi++) {
+      var p = result.placed[pi];
+      usedVol += p.l * p.w * p.h;
+    }
+    result.utilRate = usedVol / totalVol;
+    result.breakdown = [];
+    for (var bi = 0; bi < boxConfigs.length; bi++) {
+      var cnt = 0;
+      for (var pj = 0; pj < result.placed.length; pj++) {
+        if (result.placed[pj].boxIdx === bi) cnt++;
+      }
+      result.breakdown.push({ box: boxConfigs[bi].box, count: cnt, requested: boxConfigs[bi].qty });
+    }
+    result.hasRotation = result.placed.some(function(p) { return p.rotated; });
+
+    return result;
   }
 
   // ============================================================
@@ -1425,7 +1570,7 @@ window.PackingEngine = (function() {
     if (z <= 0) return true;
     for (var oi = 0; oi < occupied.length; oi++) {
       var o = occupied[oi];
-      if (Math.abs(o.z2 - z) < 0.5) {
+      if (Math.abs(o.z2 - z) < 0.01) {
         var ox = Math.max(x, o.x), ox2 = Math.min(x + bL, o.x2);
         var oy = Math.max(y, o.y), oy2 = Math.min(y + bW, o.y2);
         if (ox < ox2 && oy < oy2) return true;
@@ -1508,7 +1653,7 @@ window.PackingEngine = (function() {
     return results;
   }
 
-  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare };
+  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps };
 })();
 
 </script>
@@ -2243,7 +2388,7 @@ window.Visualizer3D = (function() {
     const tailCount = result.count - mainCount;
     const tailInfo = tailCount > 0 ? '<br>含旋转填充: <b style="color:#fa8c16">+' + tailCount + ' 个</b>' : '';
     const info = document.getElementById('canvas-info');
-    info.innerHTML = '<b>' + box.name + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
+    info.innerHTML = '<b>' + escapeHtml(box.name) + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
     document.getElementById('legend-overlay').style.display = 'none';
     wireframeMode = false;
   }
@@ -2324,14 +2469,14 @@ window.Visualizer3D = (function() {
 
     const info = document.getElementById('canvas-info');
     const breakdownHtml = mr.breakdown.filter(b => b.count > 0).map(b => {
-      return b.box.name + ': <b>' + b.count + '个</b>';
+      return escapeHtml(b.box.name) + ': <b>' + b.count + '个</b>';
     }).join('<br>');
     info.innerHTML = '<b>🎲 混装方案</b><br>总装入: <b>' + mr.totalCount + ' 个</b><br>' + breakdownHtml + '<br>利用率: <b style="color:#52c41a">' + (mr.utilRate * 100).toFixed(1) + '%</b>';
 
     const legendEl = document.getElementById('legend-overlay');
     legendEl.style.display = 'block';
     legendEl.innerHTML = mr.breakdown.filter(b => b.count > 0).map(b =>
-      '<div class="legend-item"><div class="legend-dot" style="background:' + b.box.color + '"></div>' + b.box.name + ': ' + b.count + '个</div>'
+      '<div class="legend-item"><div class="legend-dot" style="background:' + b.box.color + '"></div>' + escapeHtml(b.box.name) + ': ' + b.count + '个</div>'
     ).join('');
     wireframeMode = false;
   }
@@ -2359,7 +2504,7 @@ window.Visualizer3D = (function() {
       resizeIfNeeded: noop, clearScene: noop,
       renderSingleScene: noop, renderMixedScene: noop,
       resetCamera: noop, toggleWireframe: noop,
-      toggleCrateVis: noop, toggleOrientationMarkers: noop
+      toggleCrateVis: noop, toggleOrientationMarkers: noop, toggleCrateDashed: noop
     };
   }
 })();
@@ -2372,6 +2517,12 @@ window.Visualizer3D = (function() {
 window.UIRenderer = (function() {
   'use strict';
   try {
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
 
   function renderBoxList() {
     const s = AppState;
@@ -2498,7 +2649,7 @@ window.UIRenderer = (function() {
       const rowClass = br._bestUtil ? 'best-row' : '';
 
       return '<tr class="' + rowClass + '" onclick="App.selectBatchCrate(' + i + ')" id="batch-row-' + i + '">' +
-        '<td><span class="color-dot" style="background:' + br.crate.color + '"></span> ' + br.crate.name + '</td>' +
+        '<td><span class="color-dot" style="background:' + br.crate.color + '"></span> ' + escapeHtml(br.crate.name) + '</td>' +
         '<td class="dim-mono">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + '</td>' +
         '<td>' + vol + ' m³</td>' +
         '<td style="font-weight:600;color:#1677ff">' + (maxCount || '-') + '</td>' +
@@ -2517,7 +2668,7 @@ window.UIRenderer = (function() {
     let detailHtml = '';
     if (activeBR) {
       detailHtml = '<div class="batch-detail-section">' +
-        '<div class="batch-detail-title"><span class="color-dot" style="background:' + activeBR.crate.color + '"></span>' + activeBR.crate.name + ' (' + activeBR.crate.l + '×' + activeBR.crate.w + '×' + activeBR.crate.h + ' mm) 详情</div>';
+        '<div class="batch-detail-title"><span class="color-dot" style="background:' + activeBR.crate.color + '"></span>' + escapeHtml(activeBR.crate.name) + ' (' + activeBR.crate.l + '×' + activeBR.crate.w + '×' + activeBR.crate.h + ' mm) 详情</div>';
       if (isMixed) {
         if (activeBR.mixResult && activeBR.mixResult.totalCount > 0) {
           detailHtml += renderMixedCard(activeBR.mixResult);
@@ -2674,7 +2825,7 @@ window.UIRenderer = (function() {
   function renderSingleCard(cr, idx) {
     const { box, result, isBest, crateL, crateW, crateH } = cr;
     if (!result || result.count === 0) {
-      return '<div class="result-card"><div class="result-card-header"><div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name + '</div></div><div style="color:#ff4d4f;font-size:13px;background:#fff2f0;border-radius:8px;padding:10px">纸箱尺寸超过木箱内径，无法装入</div></div>';
+      return '<div class="result-card"><div class="result-card-header"><div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + escapeHtml(box.name) + '</div></div><div style="color:#ff4d4f;font-size:13px;background:#fff2f0;border-radius:8px;padding:10px">纸箱尺寸超过木箱内径，无法装入</div></div>';
     }
     const util = (result.utilRate * 100).toFixed(1);
     const utilColor = result.utilRate > 0.7 ? '#52c41a' : result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
@@ -2696,7 +2847,7 @@ window.UIRenderer = (function() {
 
     return '<div class="result-card ' + (isBest ? 'best' : '') + '" onclick="App.switchToVisual(' + idx + ')">' +
       '<div class="result-card-header">' +
-        '<div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + box.name +
+        '<div class="rc-title"><span class="color-dot" style="background:' + box.color + '"></span>' + escapeHtml(box.name) +
           (result.isRotated ? '<span class="tag-rotate">↻ 旋转</span>' : '') +
           (isBest ? '<span class="best-badge">最优</span>' : '') +
         '</div>' +
@@ -2743,7 +2894,7 @@ window.UIRenderer = (function() {
         dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转 | ' + Array.from(placedByBoxIdx[i].dims).join(' | ') + '</span>';
       }
       return '<div class="mix-breakdown-row">' +
-        '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + b.box.name + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +
+        '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + escapeHtml(b.box.name) + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +
         '<div class="mbd-count">' + b.count + ' 个</div>' +
         '<div class="mbd-pct">' + pct + '%</div>' +
       '</div>';
@@ -2751,7 +2902,7 @@ window.UIRenderer = (function() {
 
     const unmet = mr.breakdown.filter(b => b.requested !== null && b.count < b.requested);
     const unmetHtml = unmet.length > 0
-      ? '<div style="margin-top:8px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px;font-size:12px;color:#875800">⚠️ 以下纸箱未能完全满足需求：' + unmet.map(b => b.box.name + ' 差 ' + (b.requested - b.count) + ' 个').join('、') + '</div>' : '';
+      ? '<div style="margin-top:8px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px;font-size:12px;color:#875800">⚠️ 以下纸箱未能完全满足需求：' + unmet.map(b => escapeHtml(b.box.name) + ' 差 ' + (b.requested - b.count) + ' 个').join('、') + '</div>' : '';
 
     const strategyLabel = mr.strategy === 'util' ? '<span class="tag-strategy util">📐 空间优先</span>' : '<span class="tag-strategy">📊 数量优先</span>';
     const strategyHint = mr.strategy === 'util'
@@ -2799,7 +2950,7 @@ window.UIRenderer = (function() {
       cont.innerHTML = s.batchResults.map(function(br, i) {
         return '<button class="scheme-tab ' + (i === s.batchActiveCrateIdx ? 'active' : '') + '" onclick="App.selectBatchCrate(' + i + ')">' +
           '<span class="color-dot" style="background:' + br.crate.color + '"></span>' +
-          br.crate.name + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
+          escapeHtml(br.crate.name) + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
         '</button>';
       }).join('');
       return;
@@ -2813,7 +2964,7 @@ window.UIRenderer = (function() {
       cont.innerHTML = s.calcResults.map((cr, i) =>
         '<button class="scheme-tab ' + (i === s.currentSchemeIdx ? 'active' : '') + '" onclick="App.switchScheme(' + i + ')">' +
           '<span class="color-dot" style="background:' + cr.box.color + '"></span>' +
-          cr.box.name + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
+          escapeHtml(cr.box.name) + ' ' + (cr.result ? '<b>' + cr.result.count + '个</b>' : '×') +
         '</button>').join('');
     } else {
       const mr = s.mixResult;
@@ -2903,7 +3054,7 @@ window.UIRenderer = (function() {
     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
   }
 
-  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate };
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate, escapeHtml };
   } catch(e) {
     console.error('[UIRenderer] 模块初始化失败:', e.message);
     var noop = function() {};
@@ -3226,7 +3377,43 @@ window.App = (function() {
   }
 
   // ============================================================
-  // 计算（支持批量模式）
+  // 计算进度管理
+  // ============================================================
+  var _calcStartTime = 0;
+  var _calcTimerInterval = null;
+
+  function showCalcProgress(subText) {
+    var overlay = document.getElementById('calc-overlay');
+    var sub = document.getElementById('calc-progress-sub');
+    var bar = document.getElementById('calc-progress-bar');
+    var timeEl = document.getElementById('calc-progress-time');
+    if (overlay) overlay.classList.add('show');
+    if (sub) sub.textContent = subText || '请稍候';
+    if (bar) bar.style.width = '0%';
+    if (timeEl) timeEl.textContent = '0.0s';
+    _calcStartTime = Date.now();
+    _calcTimerInterval = setInterval(function() {
+      var elapsed = ((Date.now() - _calcStartTime) / 1000).toFixed(1);
+      if (timeEl) timeEl.textContent = elapsed + 's';
+    }, 100);
+  }
+
+  function updateCalcProgress(current, total, subText) {
+    var sub = document.getElementById('calc-progress-sub');
+    var bar = document.getElementById('calc-progress-bar');
+    var pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    if (sub) sub.textContent = subText || '';
+    if (bar) bar.style.width = pct + '%';
+  }
+
+  function hideCalcProgress() {
+    var overlay = document.getElementById('calc-overlay');
+    if (overlay) overlay.classList.remove('show');
+    if (_calcTimerInterval) { clearInterval(_calcTimerInterval); _calcTimerInterval = null; }
+  }
+
+  // ============================================================
+  // 计算（支持批量模式，含进度显示）
   // ============================================================
   function calculate() {
     // 反推模式走独立计算流程
@@ -3235,36 +3422,37 @@ window.App = (function() {
       return;
     }
 
-    const errDiv = document.getElementById('calc-error');
+    var errDiv = document.getElementById('calc-error');
     errDiv.style.display = 'none';
     errDiv.innerHTML = '';
 
-    const gap = parseFloat(document.getElementById('opt-gap').value) || 0;
-    const layerGap = parseFloat(document.getElementById('opt-layer-gap').value) || 0;
-    const allowRotate = document.getElementById('opt-rotate').checked;
-    const retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
+    var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+    var layerGap = parseFloat(document.getElementById('opt-layer-gap').value) || 0;
+    var allowRotate = document.getElementById('opt-rotate').checked;
+    var retryCount = parseInt(document.getElementById('opt-retry').value) || 10;
 
-    const currentBoxes = S.getBoxValues();
+    var currentBoxes = S.getBoxValues();
     if (currentBoxes.length === 0) { UI.showError('请至少添加一种纸箱'); return; }
-    const activeBoxes = currentBoxes.filter(b => b.enabled !== false);
+    var activeBoxes = currentBoxes.filter(b => b.enabled !== false);
     if (activeBoxes.length === 0) { UI.showError('请至少勾选一种纸箱参与计算'); return; }
 
-    const errors = [];
-    for (const b of activeBoxes) {
+    var errors = [];
+    for (var ei = 0; ei < activeBoxes.length; ei++) {
+      var b = activeBoxes[ei];
       if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0)
-        errors.push(b.name + ' 的尺寸不完整');
+        errors.push(UI.escapeHtml(b.name) + ' 的尺寸不完整');
     }
     if (errors.length) { UI.showError(errors.join('<br>')); return; }
 
     // 获取木箱列表
-    let crateList;
+    var crateList;
     if (S.batchMode) {
       crateList = S.getCrateValues();
       if (crateList.length === 0) { UI.showError('请至少添加一种木箱规格'); return; }
-      // 验证木箱尺寸
-      for (const c of crateList) {
-        if (!c.l || !c.w || !c.h || c.l <= 0 || c.w <= 0 || c.h <= 0) {
-          UI.showError('木箱 "' + c.name + '" 尺寸不完整'); return;
+      for (var ci2 = 0; ci2 < crateList.length; ci2++) {
+        var c2 = crateList[ci2];
+        if (!c2.l || !c2.w || !c2.h || c2.l <= 0 || c2.w <= 0 || c2.h <= 0) {
+          UI.showError('木箱 "' + UI.escapeHtml(c2.name) + '" 尺寸不完整'); return;
         }
       }
     } else {
@@ -3274,123 +3462,168 @@ window.App = (function() {
       }
     }
 
+    // 显示进度条，然后用 setTimeout 让浏览器先渲染
+    var modeLabel = S.currentMode === 'single' ? '单品对比' : '混装';
+    var totalCrates = crateList.length;
+    showCalcProgress(modeLabel + ' · 准备计算...');
+
+    setTimeout(function() {
+      _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel);
+    }, 60);
+  }
+
+  function _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel) {
     S.batchResults = [];
     S.calcResults = [];
     S.mixResult = null;
 
-    // 对每种木箱分别计算
-    for (let ci = 0; ci < crateList.length; ci++) {
-      const crate = crateList[ci];
-      const cL = parseFloat(crate.l);
-      const cW = parseFloat(crate.w);
-      const cH = parseFloat(crate.h);
-      const maxWeight = parseFloat(crate.maxWeight) || 0;
+    var ci = 0;
 
-      let crCalcResults = [];
-      let crMixResult = null;
+    function processNextCrate() {
+      try {
+        if (ci >= crateList.length) {
+          // 全部计算完毕
+          finishCalc();
+          return;
+        }
 
-      if (S.currentMode === 'single') {
-        const sortedBoxes = [...activeBoxes].sort(function(a, b) {
-          const wa = parseFloat(a.weight) || 0, wb = parseFloat(b.weight) || 0;
-          return wb - wa;
-        });
-        crCalcResults = sortedBoxes.map(function(b) {
-          const res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
-          const bw = parseFloat(b.weight) || 0;
-          const totalWeight = res ? res.count * bw : 0;
-          const weightLimited = maxWeight > 0 && totalWeight > maxWeight;
-          if (res && weightLimited) {
-            const maxCountByWeight = Math.floor(maxWeight / bw);
-            res.weightLimited = true;
-            res.originalCount = res.count;
-            res.maxWeight = maxWeight;
-            res.totalWeight = maxWeight;
-            res.weightRate = 1.0;
-            if (maxCountByWeight < res.count) {
-              res.count = maxCountByWeight;
-              const volRatio = maxCountByWeight / res.originalCount;
-              res.utilRate = res.utilRate * volRatio;
+        var crate = crateList[ci];
+        var cL = parseFloat(crate.l);
+        var cW = parseFloat(crate.w);
+        var cH = parseFloat(crate.h);
+        var maxWeight = parseFloat(crate.maxWeight) || 0;
+
+        // 更新进度
+        var progressText = modeLabel + ' · 正在计算 ' + (ci + 1) + '/' + totalCrates + ' 号木箱';
+        updateCalcProgress(ci + 1, totalCrates, progressText);
+
+        var crCalcResults = [];
+        var crMixResult = null;
+
+        if (S.currentMode === 'single') {
+          var sortedBoxes = activeBoxes.slice().sort(function(a, b2) {
+            var wa = parseFloat(a.weight) || 0, wb = parseFloat(b2.weight) || 0;
+            return wb - wa;
+          });
+          crCalcResults = sortedBoxes.map(function(b) {
+            var res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            var bw = parseFloat(b.weight) || 0;
+            var totalWeight = res ? res.count * bw : 0;
+            var weightLimited = maxWeight > 0 && totalWeight > maxWeight;
+            if (res && weightLimited) {
+              var maxCountByWeight = Math.floor(maxWeight / bw);
+              res.weightLimited = true;
+              res.originalCount = res.count;
+              res.maxWeight = maxWeight;
+              res.totalWeight = maxWeight;
+              res.weightRate = 1.0;
+              if (maxCountByWeight < res.count) {
+                res.count = maxCountByWeight;
+                var volRatio = maxCountByWeight / res.originalCount;
+                res.utilRate = res.utilRate * volRatio;
+              }
+            } else if (res && maxWeight > 0) {
+              res.totalWeight = totalWeight;
+              res.maxWeight = maxWeight;
+              res.weightRate = totalWeight / maxWeight;
+              res.weightLimited = false;
             }
-          } else if (res && maxWeight > 0) {
-            res.totalWeight = totalWeight;
-            res.maxWeight = maxWeight;
-            res.weightRate = totalWeight / maxWeight;
-            res.weightLimited = false;
+            return { box: b, crateL: cL, crateW: cW, crateH: cH, gap: gap, result: res };
+          });
+          var bestIdx = 0;
+          for (var i = 1; i < crCalcResults.length; i++) {
+            var a2 = crCalcResults[i].result, b3 = crCalcResults[bestIdx].result;
+            if (!b3 || (a2 && a2.count > b3.count)) bestIdx = i;
+            else if (a2 && b3 && a2.count === b3.count && a2.utilRate > b3.utilRate) bestIdx = i;
           }
-          return { box: b, crateL: cL, crateW: cW, crateH: cH, gap, result: res };
-        });
-        let bestIdx = 0;
-        for (let i = 1; i < crCalcResults.length; i++) {
-          const a = crCalcResults[i].result, b2 = crCalcResults[bestIdx].result;
-          if (!b2 || (a && a.count > b2.count)) bestIdx = i;
-          else if (a && b2 && a.count === b2.count && a.utilRate > b2.utilRate) bestIdx = i;
-        }
-        if (crCalcResults[bestIdx] && crCalcResults[bestIdx].result) crCalcResults[bestIdx].isBest = true;
-      } else {
-        const sortedBoxes = [...activeBoxes].sort(function(a, b) {
-          const wa = parseFloat(a.weight) || 0, wb = parseFloat(b.weight) || 0;
-          return wb - wa;
-        });
-        const boxConfigs = sortedBoxes.map(function(b) {
-          const qtyRaw = b.qty;
-          const qty = (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null) ? null : Math.max(1, parseInt(qtyRaw) || 1);
-          return { box: b, qty };
-        });
-        crMixResult = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
-        if (crMixResult) {
-          crMixResult.displayCrateL = cL;
-          crMixResult.displayCrateW = cW;
-          crMixResult.displayCrateH = cH;
-          crMixResult.strategy = S.mixStrategy;
-          if (maxWeight > 0) {
-            let totalW = 0;
-            (crMixResult.placed || []).forEach(function(p) {
-              const bw = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
-              totalW += bw;
-            });
-            crMixResult.totalWeight = totalW;
-            crMixResult.maxWeight = maxWeight;
-            crMixResult.weightRate = totalW / maxWeight;
-            crMixResult.weightOverLimit = totalW > maxWeight;
+          if (crCalcResults[bestIdx] && crCalcResults[bestIdx].result) crCalcResults[bestIdx].isBest = true;
+        } else {
+          var sortedBoxes2 = activeBoxes.slice().sort(function(a, b2) {
+            var wa = parseFloat(a.weight) || 0, wb = parseFloat(b2.weight) || 0;
+            return wb - wa;
+          });
+          var boxConfigs = sortedBoxes2.map(function(b) {
+            var qtyRaw = b.qty;
+            var qty = (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null) ? null : Math.max(1, parseInt(qtyRaw) || 1);
+            return { box: b, qty: qty };
+          });
+          crMixResult = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+          if (crMixResult) {
+            crMixResult.displayCrateL = cL;
+            crMixResult.displayCrateW = cW;
+            crMixResult.displayCrateH = cH;
+            crMixResult.strategy = S.mixStrategy;
+            if (maxWeight > 0) {
+              var totalW = 0;
+              (crMixResult.placed || []).forEach(function(p) {
+                var bw2 = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
+                totalW += bw2;
+              });
+              crMixResult.totalWeight = totalW;
+              crMixResult.maxWeight = maxWeight;
+              crMixResult.weightRate = totalW / maxWeight;
+              crMixResult.weightOverLimit = totalW > maxWeight;
+            }
           }
         }
-      }
 
-      S.batchResults.push({
-        crate: crate,
-        calcResults: crCalcResults,
-        mixResult: crMixResult
-      });
-    }
+        S.batchResults.push({
+          crate: crate,
+          calcResults: crCalcResults,
+          mixResult: crMixResult
+        });
 
-    // 批量模式下标记推荐
-    if (S.batchMode && S.batchResults.length > 1) {
-      markBatchRecommendations();
-    }
+        ci++;
 
-    // 非批量模式，把第一个结果赋给旧字段以兼容渲染
-    if (!S.batchMode && S.batchResults.length > 0) {
-      const br = S.batchResults[0];
-      S.calcResults = br.calcResults;
-      S.mixResult = br.mixResult;
-    }
-
-    SM.saveHistory({ mode: S.currentMode, calcResults: S.calcResults, mixResult: S.mixResult, batchResults: S.batchMode ? S.batchResults : null, timestamp: Date.now() });
-    UI.renderResults();
-    UI.renderSchemaTabs();
-    S.currentSchemeIdx = 0;
-    S.batchActiveCrateIdx = 0;
-
-    const isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady()) {
-      if (S.currentMode === 'mixed' && S.mixResult) {
-        V3.renderMixedScene(S.mixResult);
-      } else if (S.calcResults.length > 0) {
-        V3.renderSingleScene(S.calcResults[0]);
+        // 批量模式下，每个木箱之间让出主线程让进度条更新
+        if (ci < crateList.length) {
+          setTimeout(processNextCrate, 0);
+        } else {
+          finishCalc();
+        }
+      } catch(e) {
+        hideCalcProgress();
+        console.error('[App] 计算出错:', e);
       }
     }
-    closeSidebar();
-    switchTab('results');
+
+    function finishCalc() {
+      try {
+        // 批量模式下标记推荐
+        if (S.batchMode && S.batchResults.length > 1) {
+          markBatchRecommendations();
+        }
+
+        // 非批量模式，把第一个结果赋给旧字段以兼容渲染
+        if (!S.batchMode && S.batchResults.length > 0) {
+          var br = S.batchResults[0];
+          S.calcResults = br.calcResults;
+          S.mixResult = br.mixResult;
+        }
+
+        SM.saveHistory({ mode: S.currentMode, calcResults: S.calcResults, mixResult: S.mixResult, batchResults: S.batchMode ? S.batchResults : null, timestamp: Date.now() });
+        UI.renderResults();
+        UI.renderSchemaTabs();
+        S.currentSchemeIdx = 0;
+        S.batchActiveCrateIdx = 0;
+
+        var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
+        if (isVisualActive && V3.isReady()) {
+          if (S.currentMode === 'mixed' && S.mixResult) {
+            V3.renderMixedScene(S.mixResult);
+          } else if (S.calcResults.length > 0) {
+            V3.renderSingleScene(S.calcResults[0]);
+          }
+        }
+        closeSidebar();
+        switchTab('results');
+      } finally {
+        hideCalcProgress();
+      }
+    }
+
+    // 启动计算
+    processNextCrate();
   }
 
   // 批量推荐逻辑
@@ -3624,7 +3857,7 @@ window.App = (function() {
     for (var i = 0; i < activeBoxes.length; i++) {
       var b = activeBoxes[i];
       if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0) {
-        UI.showError(b.name + ' 的尺寸不完整'); return;
+        UI.showError(UI.escapeHtml(b.name) + ' 的尺寸不完整'); return;
       }
     }
 
@@ -3652,43 +3885,54 @@ window.App = (function() {
       return { box: b, qty: qty };
     });
 
-    // 对每种木箱尺寸运行FFD反推
-    var allResults = PE.calcReverseCompare(crateList, boxConfigs, gap, allowRotate);
+    // 显示进度条
+    showCalcProgress('木箱反推 · 准备计算...');
 
-    // 只展示推荐的最佳方案（数量最少）
-    S.reverseResult = allResults.length > 0 ? allResults[0] : null;
-    S.reverseAllResults = allResults;
-    S.reverseActiveCrateIdx = 0;
+    setTimeout(function() {
+      try {
+        updateCalcProgress(1, 1, '木箱反推 · 正在计算 ' + crateList.length + ' 种木箱');
 
-    UI.renderReverseResults();
+        // 对每种木箱尺寸运行FFD反推
+        var allResults = PE.calcReverseCompare(crateList, boxConfigs, gap, allowRotate);
 
-    // 保存历史
-    SM.saveHistory({ mode: 'reverse', reverseResult: S.reverseResult, timestamp: Date.now() });
+        // 只展示推荐的最佳方案（数量最少）
+        S.reverseResult = allResults.length > 0 ? allResults[0] : null;
+        S.reverseAllResults = allResults;
+        S.reverseActiveCrateIdx = 0;
 
-    // 渲染3D
-    var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady() && S.reverseResult && S.reverseResult.crates.length > 0) {
-      UI.selectReverseCrate(0);
-    }
+        UI.renderReverseResults();
 
-    closeSidebar();
-    switchTab('results');
+        // 保存历史
+        SM.saveHistory({ mode: 'reverse', reverseResult: S.reverseResult, timestamp: Date.now() });
 
-    // 滚动到结果区域，让用户看到变化
-    if (S.reverseResult && S.reverseResult.crates.length > 0) {
-      setTimeout(function() {
-        var resultsEl = document.getElementById('results-content');
-        if (resultsEl) {
-          resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          // 闪烁高亮效果
-          resultsEl.style.transition = 'box-shadow 0.3s';
-          resultsEl.style.boxShadow = '0 0 0 3px #1677ff';
-          setTimeout(function() {
-            resultsEl.style.boxShadow = 'none';
-          }, 600);
+        // 渲染3D
+        var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
+        if (isVisualActive && V3.isReady() && S.reverseResult && S.reverseResult.crates.length > 0) {
+          UI.selectReverseCrate(0);
         }
-      }, 200);
-    }
+
+        closeSidebar();
+        switchTab('results');
+
+        // 滚动到结果区域，让用户看到变化
+        if (S.reverseResult && S.reverseResult.crates.length > 0) {
+          setTimeout(function() {
+            var resultsEl = document.getElementById('results-content');
+            if (resultsEl) {
+              resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              // 闪烁高亮效果
+              resultsEl.style.transition = 'box-shadow 0.3s';
+              resultsEl.style.boxShadow = '0 0 0 3px #1677ff';
+              setTimeout(function() {
+                resultsEl.style.boxShadow = 'none';
+              }, 600);
+            }
+          }, 200);
+        }
+      } finally {
+        hideCalcProgress();
+      }
+    }, 60);
   }
 
   function selectReverseCrate(idx) {
@@ -3935,7 +4179,7 @@ window.App = (function() {
       calculate: function(){}, switchTab: function(){}, switchToVisual: function(){}, switchScheme: function(){},
       loadHistory: function(){}, deleteHistory: function(){}, clearHistoryConfirm: function(){},
       clearAll: function(){}, exportResult: function(){}, updateCrateVol: function(){},
-      resetCamera: function(){}, toggleWireframe: function(){}, toggleCrateVis: function(){}, toggleOrientationMarkers: function(){},
+      resetCamera: function(){}, toggleWireframe: function(){}, toggleCrateVis: function(){}, toggleOrientationMarkers: function(){}, toggleCrateDashed: function(){},
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
       updateCrateVolUI: function(){}, updateCrateNameUI: function(){},
@@ -4048,6 +4292,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- 移动端侧边栏遮罩 -->
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
+
+<!-- 计算进度遮罩 -->
+<div class="calc-overlay" id="calc-overlay">
+  <div class="calc-progress-card">
+    <div class="calc-progress-spinner"></div>
+    <div class="calc-progress-title">正在计算...</div>
+    <div class="calc-progress-sub" id="calc-progress-sub">请稍候</div>
+    <div class="calc-progress-bar-wrap">
+      <div class="calc-progress-bar" id="calc-progress-bar" style="width:0%"></div>
+    </div>
+    <div class="calc-progress-time" id="calc-progress-time">0.0s</div>
+  </div>
+</div>
 
 </body>
 </html>

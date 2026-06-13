@@ -588,7 +588,138 @@ window.PackingEngine = (function() {
       }
     }
 
+    // 间隙填充：对最优结果扫描剩余空隙，尝试塞入更多纸箱
+    if (bestResult && bestResult.totalCount > 0) {
+      var filled = fillGaps(bestResult, boxConfigs, crateL, crateW, crateH, gap, allowRotate);
+      if (filled) bestResult = filled;
+    }
+
     return bestResult;
+  }
+
+  // ============================================================
+  // 间隙填充：主算法结束后，扫描剩余空隙尝试塞入更多纸箱
+  // ============================================================
+  function fillGaps(result, boxConfigs, crateL, crateW, crateH, gap, allowRotate) {
+    if (!result || !result.placed || result.placed.length === 0) return result;
+
+    const cL = crateL - gap * 2;
+    const cW = crateW - gap * 2;
+    const cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return result;
+
+    // 已放置纸箱 → occupied 列表（归一化为 [0, cL] 坐标系，与 collectKeyPoints 的 max 参数一致）
+    const occupied = result.placed.map(function(p) {
+      return { x: p.x - gap, y: p.y - gap, z: p.z - gap, x2: p.x + p.l - gap, y2: p.y + p.w - gap, z2: p.z + p.h - gap };
+    });
+
+    // 收集剩余需求
+    const demands = [];
+    for (var i = 0; i < boxConfigs.length; i++) {
+      var bc = boxConfigs[i];
+      var placedCount = 0;
+      for (var j = 0; j < result.placed.length; j++) {
+        if (result.placed[j].boxIdx === i) placedCount++;
+      }
+      var remaining = bc.qty === null ? Infinity : bc.qty - placedCount;
+      if (remaining > 0 || bc.qty === null) {
+        demands.push({ bc: bc, idx: i, remaining: bc.qty === null ? Infinity : remaining });
+      }
+    }
+    if (demands.length === 0) return result;
+
+    // 按纸箱体积从大到小尝试（大箱填隙更易成功）
+    demands.sort(function(a, b) {
+      var va = a.bc.box.l * a.bc.box.w * a.bc.box.h;
+      var vb = b.bc.box.l * b.bc.box.w * b.bc.box.h;
+      return vb - va;
+    });
+
+    var kp = collectKeyPoints(occupied, cL, cW, cH);
+    var maxGapIter = 2000; // 防止死循环
+
+    for (var di = 0; di < demands.length; di++) {
+      var dem = demands[di];
+      var bc = dem.bc;
+      var keepUpright = bc.box.keepUpright === true;
+      var rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+
+      var filled = true;
+      while (filled && dem.remaining > 0 && maxGapIter-- > 0) {
+        filled = false;
+        for (var ri = 0; ri < rots.length; ri++) {
+          var rot = rots[ri];
+          var rl = rot[0], rw = rot[1], rh = rot[2];
+          if (rl > cL || rw > cW || rh > cH) continue;
+
+          outer:
+          for (var zi = 0; zi < kp.zs.length; zi++) {
+            var z = kp.zs[zi];
+            if (z + rh > cH) break;
+            for (var yi = 0; yi < kp.ys.length; yi++) {
+              var y = kp.ys[yi];
+              if (y + rw > cW) break;
+              for (var xi = 0; xi < kp.xs.length; xi++) {
+                var x = kp.xs[xi];
+                if (x + rl > cL) break;
+
+                if (isOccupied(occupied, x, y, z, rl, rw, rh)) continue;
+                if (!isSupported(occupied, x, y, z, rl, rw)) continue;
+
+                // 归一化坐标系下只需检查 [0, cL] 范围，gap 已在归一化时消去
+                if (x < 0 || y < 0 || z < 0) continue;
+                if (x + rl > cL || y + rw > cW || z + rh > cH) continue;
+
+                // 放置！坐标加回 gap 还原物理位置
+                var isRot = !(rl === bc.box.l && rw === bc.box.w && rh === bc.box.h);
+                result.placed.push({
+                  x: x + gap, y: y + gap, z: z + gap,
+                  l: rl, w: rw, h: rh,
+                  boxIdx: dem.idx,
+                  color: bc.box.color,
+                  name: bc.box.name,
+                  rotated: isRot
+                });
+                occupied.push({ x: x, y: y, z: z, x2: x + rl, y2: y + rw, z2: z + rh });
+                dem.remaining--;
+                filled = true;
+
+                // 更新离散坐标点
+                if (kp.xs.indexOf(x) === -1) { kp.xs.push(x); kp.xs.sort(function(a, b) { return a - b; }); }
+                if (kp.xs.indexOf(x + rl) === -1) { kp.xs.push(x + rl); kp.xs.sort(function(a, b) { return a - b; }); }
+                if (kp.ys.indexOf(y) === -1) { kp.ys.push(y); kp.ys.sort(function(a, b) { return a - b; }); }
+                if (kp.ys.indexOf(y + rw) === -1) { kp.ys.push(y + rw); kp.ys.sort(function(a, b) { return a - b; }); }
+                if (kp.zs.indexOf(z) === -1) { kp.zs.push(z); kp.zs.sort(function(a, b) { return a - b; }); }
+                if (kp.zs.indexOf(z + rh) === -1) { kp.zs.push(z + rh); kp.zs.sort(function(a, b) { return a - b; }); }
+
+                break outer;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 更新 result 统计
+    result.totalCount = result.placed.length;
+    var totalVol = cL * cW * cH;
+    var usedVol = 0;
+    for (var pi = 0; pi < result.placed.length; pi++) {
+      var p = result.placed[pi];
+      usedVol += p.l * p.w * p.h;
+    }
+    result.utilRate = usedVol / totalVol;
+    result.breakdown = [];
+    for (var bi = 0; bi < boxConfigs.length; bi++) {
+      var cnt = 0;
+      for (var pj = 0; pj < result.placed.length; pj++) {
+        if (result.placed[pj].boxIdx === bi) cnt++;
+      }
+      result.breakdown.push({ box: boxConfigs[bi].box, count: cnt, requested: boxConfigs[bi].qty });
+    }
+    result.hasRotation = result.placed.some(function(p) { return p.rotated; });
+
+    return result;
   }
 
   // ============================================================
@@ -753,7 +884,7 @@ window.PackingEngine = (function() {
     if (z <= 0) return true;
     for (var oi = 0; oi < occupied.length; oi++) {
       var o = occupied[oi];
-      if (Math.abs(o.z2 - z) < 0.5) {
+      if (Math.abs(o.z2 - z) < 0.01) {
         var ox = Math.max(x, o.x), ox2 = Math.min(x + bL, o.x2);
         var oy = Math.max(y, o.y), oy2 = Math.min(y + bW, o.y2);
         if (ox < ox2 && oy < oy2) return true;
@@ -836,5 +967,5 @@ window.PackingEngine = (function() {
     return results;
   }
 
-  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare };
+  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps };
 })();
