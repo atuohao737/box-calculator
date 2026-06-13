@@ -30,6 +30,32 @@ window.App = (function() {
     }
   }
 
+  // 侧栏折叠（桌面端）
+  function toggleSidebarCollapse() {
+    var body = document.body;
+    var btn = document.getElementById('btn-sidebar-collapse');
+    body.classList.toggle('sidebar-collapsed');
+    var isCollapsed = body.classList.contains('sidebar-collapsed');
+    if (btn) btn.textContent = isCollapsed ? '▶' : '◀';
+    if (btn) btn.title = isCollapsed ? '展开侧栏' : '收起侧栏';
+    try { localStorage.setItem('box-calc-sidebar', isCollapsed ? 'collapsed' : 'expanded'); } catch(e) {}
+    // 自适应3D场景
+    setTimeout(function() {
+      if (V3 && V3.resizeIfNeeded) V3.resizeIfNeeded();
+    }, 350);
+  }
+
+  function initSidebar() {
+    var saved = 'expanded';
+    try { saved = localStorage.getItem('box-calc-sidebar') || 'expanded'; } catch(e) {}
+    if (saved === 'collapsed') {
+      document.body.classList.add('sidebar-collapsed');
+      var btn = document.getElementById('btn-sidebar-collapse');
+      if (btn) btn.textContent = '▶';
+      if (btn) btn.title = '展开侧栏';
+    }
+  }
+
   // 侧边栏（移动端）
   function openSidebar() {
     document.getElementById('sidebar-panel').classList.add('open');
@@ -1177,8 +1203,9 @@ window.App = (function() {
         if (el) el.addEventListener('input', updateCrateVol);
       });
 
-      // 初始化主题
+      // 初始化主题和侧栏状态
       initTheme();
+      initSidebar();
 
       console.log('[App] 初始化完成 - 模式:', S.currentMode);
     } catch(e) {
@@ -1195,7 +1222,7 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
-    openSidebar, closeSidebar, cancelCalc, toggleTheme,
+    openSidebar, closeSidebar, cancelCalc, toggleTheme, toggleSidebarCollapse,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },

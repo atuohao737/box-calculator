@@ -49,8 +49,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .btn-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border-default); background: var(--bg-card); cursor: pointer; font-size: 16px; line-height: 1; padding: 0; transition: background 0.2s; }
 .btn-icon:hover { background: var(--bg-section-hover); }
 
-.layout { display: grid; grid-template-columns: 380px 1fr; height: calc(100vh - 56px); }
-.sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-default); display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.layout { display: grid; grid-template-columns: 380px 1fr; height: calc(100vh - 56px); transition: grid-template-columns 0.3s ease; }
+.sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-default); display: flex; flex-direction: column; overflow: hidden; padding: 0; min-width: 0; }
+.sidebar-collapsed .layout { grid-template-columns: 0px 1fr; }
+.sidebar-collapsed .sidebar { border-right: none; }
+.sidebar-collapsed .sidebar-scroll,
+.sidebar-collapsed .sidebar-close-btn { display: none; }
 
 /* 移动端侧边栏遮罩 */
 .sidebar-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.4); }
@@ -357,6 +361,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
     <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
   </div>
   <div class="header-actions">
+    <button class="btn btn-icon" id="btn-sidebar-collapse" onclick="App.toggleSidebarCollapse()" title="收起/展开侧栏">◀</button>
     <button class="btn btn-icon btn-theme" id="btn-theme-toggle" onclick="App.toggleTheme()" title="切换深色/浅色主题">🌙</button>
     <button class="btn btn-outline btn-sm" onclick="App.exportResult()">导出</button>
     <button class="btn btn-sm" style="background:#f5f5f5;border:1px solid #d9d9d9;color:#666" onclick="App.clearAll()">重置</button>
@@ -3190,6 +3195,32 @@ window.App = (function() {
     }
   }
 
+  // 侧栏折叠（桌面端）
+  function toggleSidebarCollapse() {
+    var body = document.body;
+    var btn = document.getElementById('btn-sidebar-collapse');
+    body.classList.toggle('sidebar-collapsed');
+    var isCollapsed = body.classList.contains('sidebar-collapsed');
+    if (btn) btn.textContent = isCollapsed ? '▶' : '◀';
+    if (btn) btn.title = isCollapsed ? '展开侧栏' : '收起侧栏';
+    try { localStorage.setItem('box-calc-sidebar', isCollapsed ? 'collapsed' : 'expanded'); } catch(e) {}
+    // 自适应3D场景
+    setTimeout(function() {
+      if (V3 && V3.resizeIfNeeded) V3.resizeIfNeeded();
+    }, 350);
+  }
+
+  function initSidebar() {
+    var saved = 'expanded';
+    try { saved = localStorage.getItem('box-calc-sidebar') || 'expanded'; } catch(e) {}
+    if (saved === 'collapsed') {
+      document.body.classList.add('sidebar-collapsed');
+      var btn = document.getElementById('btn-sidebar-collapse');
+      if (btn) btn.textContent = '▶';
+      if (btn) btn.title = '展开侧栏';
+    }
+  }
+
   // 侧边栏（移动端）
   function openSidebar() {
     document.getElementById('sidebar-panel').classList.add('open');
@@ -4337,8 +4368,9 @@ window.App = (function() {
         if (el) el.addEventListener('input', updateCrateVol);
       });
 
-      // 初始化主题
+      // 初始化主题和侧栏状态
       initTheme();
+      initSidebar();
 
       console.log('[App] 初始化完成 - 模式:', S.currentMode);
     } catch(e) {
@@ -4355,7 +4387,7 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
-    openSidebar, closeSidebar, cancelCalc, toggleTheme,
+    openSidebar, closeSidebar, cancelCalc, toggleTheme, toggleSidebarCollapse,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
