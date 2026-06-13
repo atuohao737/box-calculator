@@ -102,7 +102,7 @@ window.UIRenderer = (function() {
     }
   }
 
-  // 批量结果渲染
+  // 批量结果渲染（卡片风格）
   function renderBatchResults() {
     const s = AppState;
     const cont = document.getElementById('results-content');
@@ -113,83 +113,79 @@ window.UIRenderer = (function() {
       return;
     }
 
-    // 构建对比表
     const isMixed = s.currentMode === 'mixed';
-    let sortCol = '_maxUtil'; // 默认按利用率排序
-    let sortDesc = true;
 
+    // 按利用率降序排列
     const sorted = [...brs].sort(function(a, b) {
-      const va = a[sortCol] || 0, vb = b[sortCol] || 0;
-      return sortDesc ? vb - va : va - vb;
+      return (b._maxUtil || 0) - (a._maxUtil || 0);
     });
-
-    const tableRows = sorted.map(function(br, i) {
-      let maxCount = br._maxCount || 0;
-      let maxUtil = br._maxUtil || 0;
-      let bestLabels = '';
-      if (br._bestUtil) bestLabels += '<span class="batch-best-badge">⭐ 最佳利用率</span>';
-      if (br._bestCount) bestLabels += '<span class="batch-best-badge">📊 最多数量</span>';
-      if (!bestLabels && maxCount === 0) bestLabels = '<span style="color:#ff4d4f;font-size:11px">无法装入</span>';
-
-      const utilPct = (maxUtil * 100).toFixed(1);
-      const utilColor = maxUtil > 0.7 ? '#52c41a' : maxUtil > 0.4 ? '#fa8c16' : '#ff4d4f';
-      const vol = (br.crate.l * br.crate.w * br.crate.h / 1e9).toFixed(4);
-      const rowClass = br._bestUtil ? 'best-row' : '';
-
-      return '<tr class="' + rowClass + '" onclick="App.selectBatchCrate(' + i + ')" id="batch-row-' + i + '">' +
-        '<td><span class="color-dot" style="background:' + br.crate.color + '"></span> ' + escapeHtml(br.crate.name) + '</td>' +
-        '<td class="dim-mono">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + '</td>' +
-        '<td>' + vol + ' m³</td>' +
-        '<td style="font-weight:600;color:#1677ff">' + (maxCount || '-') + '</td>' +
-        '<td><div style="display:flex;align-items:center;gap:6px"><div class="batch-util-bar"><div class="batch-util-fill" style="width:' + utilPct + '%;background:' + utilColor + '"></div></div><span style="font-weight:600;color:' + utilColor + '">' + utilPct + '%</span></div></td>' +
-        '<td>' + bestLabels + '</td>' +
-      '</tr>';
-    }).join('');
 
     const summaryText = isMixed
       ? '混装模式 · 共对比 <b>' + brs.length + '</b> 种木箱'
       : '单品对比模式 · 共对比 <b>' + brs.length + '</b> 种木箱';
 
-    // 当前选中的木箱详情
-    const activeIdx = s.batchActiveCrateIdx;
-    const activeBR = brs[activeIdx];
-    let detailHtml = '';
-    if (activeBR) {
-      detailHtml = '<div class="batch-detail-section">' +
-        '<div class="batch-detail-title"><span class="color-dot" style="background:' + activeBR.crate.color + '"></span>' + escapeHtml(activeBR.crate.name) + ' (' + activeBR.crate.l + '×' + activeBR.crate.w + '×' + activeBR.crate.h + ' mm) 详情</div>';
-      if (isMixed) {
-        if (activeBR.mixResult && activeBR.mixResult.totalCount > 0) {
-          detailHtml += renderMixedCard(activeBR.mixResult);
-        } else {
-          detailHtml += '<div style="color:#ff4d4f;font-size:13px;padding:12px">无法装入</div>';
-        }
-      } else {
-        if (activeBR.calcResults.length > 0) {
-          detailHtml += '<div class="result-grid">' + activeBR.calcResults.map(function(cr, idx) { return renderSingleCard(cr, idx); }).join('') + '</div>';
-        } else {
-          detailHtml += '<div style="color:#ff4d4f;font-size:13px;padding:12px">无法装入</div>';
-        }
-      }
-      detailHtml += '</div>';
-    }
+    // 总体概览
+    var html = '';
+    html += '<div style="background:linear-gradient(135deg,#f0f5ff,#e6f7ff);border-radius:12px;padding:16px;margin-bottom:16px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:18px">📋</span><span style="font-weight:600;font-size:15px">批量对比结果</span></div>';
+    html += '<div style="font-size:13px;color:#555">' + summaryText + '</div>';
+    html += '</div>';
 
-    cont.innerHTML =
-      '<div style="margin-bottom:8px;font-size:13px;color:#666">' + summaryText + '</div>' +
-      '<div class="batch-rec-label">💡 点击行查看详情，⭐ = 推荐方案</div>' +
-      '<div style="overflow-x:auto">' +
-        '<table class="batch-compare-table">' +
-          '<thead><tr>' +
-            '<th>木箱名称</th>' +
-            '<th>尺寸 (mm)</th>' +
-            '<th>容积</th>' +
-            '<th>' + (isMixed ? '总装箱数' : '最多装箱数') + '</th>' +
-            '<th>利用率</th>' +
-            '<th>推荐</th>' +
-          '</tr></thead>' +
-          '<tbody>' + tableRows + '</tbody>' +
-        '</table>' +
-      '</div>' +
-      detailHtml;
+    // 卡片列表
+    html += '<div style="display:flex;flex-direction:column;gap:12px">';
+    sorted.forEach(function(br, i) {
+      var maxCount = br._maxCount || 0;
+      var maxUtil = br._maxUtil || 0;
+      var utilPct = (maxUtil * 100).toFixed(1);
+      var utilColor = maxUtil > 0.7 ? '#52c41a' : maxUtil > 0.4 ? '#fa8c16' : '#ff4d4f';
+      var vol = (br.crate.l * br.crate.w * br.crate.h / 1e9).toFixed(4);
+
+      // 获取原始索引（在 brs 中的位置，而不是 sorted 中的位置）
+      var origIdx = brs.indexOf(br);
+      var isActive = origIdx === s.batchActiveCrateIdx;
+      var crateHeaderBg = isActive ? '#e6f4ff' : '#fafafa';
+      var crateHeaderBorder = isActive ? '#1677ff' : '#e8e8e8';
+
+      // 最佳标记
+      var bestBadges = '';
+      if (br._bestUtil) bestBadges += '<span class="batch-best-badge" style="background:#52c41a">⭐ 最佳利用率</span>';
+      if (br._bestCount) bestBadges += '<span class="batch-best-badge" style="background:#1677ff">📊 最多数量</span>';
+
+      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ')">';
+      html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
+      html += '<div class="rc-title">📦 ' + escapeHtml(br.crate.name) + '</div>';
+      html += '<div style="font-size:12px;color:#888">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm</div>';
+      html += '</div>';
+
+      // 最佳标记（如果有）
+      if (bestBadges) {
+        html += '<div style="padding:0 12px 8px 12px;display:flex;gap:6px;flex-wrap:wrap">' + bestBadges + '</div>';
+      }
+
+      // 关键指标
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 10px 12px;font-size:13px">';
+      html += '<div><span style="color:#888">装箱数量</span><br><b style="color:#1677ff;font-size:16px">' + (maxCount || '-') + '</b> 个</div>';
+      html += '<div><span style="color:#888">容积</span><br><b>' + vol + '</b> m³</div>';
+      html += '</div>';
+
+      // 利用率进度条
+      html += '<div style="padding:0 12px 12px 12px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:2px">' +
+          '<span>空间利用率</span><span style="font-weight:600;color:' + utilColor + '">' + utilPct + '%</span>' +
+        '</div>' +
+        '<div class="batch-util-bar"><div class="batch-util-fill" style="width:' + utilPct + '%;background:' + utilColor + '"></div></div>' +
+      '</div>';
+
+      // 如果无法装入
+      if (maxCount === 0) {
+        html += '<div style="color:#ff4d4f;font-size:12px;padding:0 12px 12px 12px">⚠ 纸箱尺寸超过木箱内径，无法装入</div>';
+      }
+
+      html += '</div>';
+    });
+    html += '</div>';
+
+    cont.innerHTML = html;
   }
 
   function selectBatchCrate(idx) {
@@ -198,24 +194,26 @@ window.UIRenderer = (function() {
     const br = S.batchResults[idx];
     if (!br) return;
 
-    // 高亮选中行
-    document.querySelectorAll('.batch-compare-table tbody tr').forEach(function(tr, i) {
-      tr.classList.toggle('active-row', i === idx);
-    });
-
-    // 更新详情区域
+    // 重新渲染卡片，更新高亮状态
     renderBatchResults();
 
-    // 更新3D视图
+    // 自动切换到3D视图
     const V3 = Visualizer3D;
-    const isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady()) {
-      if (S.currentMode === 'mixed' && br.mixResult) {
-        V3.renderMixedScene(br.mixResult);
-      } else if (br.calcResults.length > 0) {
-        V3.renderSingleScene(br.calcResults[0]);
-      }
+    if (typeof App !== 'undefined' && App.switchTab) {
+      App.switchTab('visual');
     }
+    // 延迟渲染，确保 V3 初始化完成
+    (function renderWhenReady(retries) {
+      if (V3 && V3.isReady()) {
+        if (S.currentMode === 'mixed' && br.mixResult) {
+          V3.renderMixedScene(br.mixResult);
+        } else if (br.calcResults.length > 0) {
+          V3.renderSingleScene(br.calcResults[0]);
+        }
+      } else if (retries < 15) {
+        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+      }
+    })(0);
   }
 
   // ============================================================
