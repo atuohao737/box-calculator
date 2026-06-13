@@ -329,12 +329,13 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="calc-overlay" id="calc-overlay">
   <div class="calc-progress-card">
     <div class="calc-progress-spinner"></div>
-    <div class="calc-progress-title">正在计算...</div>
+    <div class="calc-progress-title" id="calc-progress-title">正在计算...</div>
     <div class="calc-progress-sub" id="calc-progress-sub">请稍候</div>
     <div class="calc-progress-bar-wrap">
       <div class="calc-progress-bar" id="calc-progress-bar" style="width:0%"></div>
     </div>
     <div class="calc-progress-time" id="calc-progress-time">0.0s</div>
+    <button class="calc-progress-cancel" id="calc-progress-cancel" onclick="App.cancelCalc()">取消计算</button>
   </div>
 </div>
 

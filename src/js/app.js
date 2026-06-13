@@ -309,13 +309,17 @@ window.App = (function() {
   // ============================================================
   var _calcStartTime = 0;
   var _calcTimerInterval = null;
+  var _calcCancelled = false;
 
   function showCalcProgress(subText) {
     var overlay = document.getElementById('calc-overlay');
     var sub = document.getElementById('calc-progress-sub');
     var bar = document.getElementById('calc-progress-bar');
     var timeEl = document.getElementById('calc-progress-time');
+    var title = document.getElementById('calc-progress-title');
+    _calcCancelled = false;
     if (overlay) overlay.classList.add('show');
+    if (title) title.textContent = '正在计算...';
     if (sub) sub.textContent = subText || '请稍候';
     if (bar) bar.style.width = '0%';
     if (timeEl) timeEl.textContent = '0.0s';
@@ -335,9 +339,19 @@ window.App = (function() {
   }
 
   function hideCalcProgress() {
+    _calcCancelled = false;
     var overlay = document.getElementById('calc-overlay');
     if (overlay) overlay.classList.remove('show');
     if (_calcTimerInterval) { clearInterval(_calcTimerInterval); _calcTimerInterval = null; }
+  }
+
+  function cancelCalc() {
+    _calcCancelled = true;
+    var title = document.getElementById('calc-progress-title');
+    if (title) title.textContent = '已取消';
+    var sub = document.getElementById('calc-progress-sub');
+    if (sub) sub.textContent = '正在结束计算...';
+    setTimeout(function() { hideCalcProgress(); }, 300);
   }
 
   // ============================================================
@@ -424,7 +438,7 @@ window.App = (function() {
 
     function processNextCrate() {
       try {
-        if (ci >= crateList.length) {
+        if (ci >= crateList.length || _calcCancelled) {
           finishCalc();
           return;
         }
@@ -516,6 +530,7 @@ window.App = (function() {
           runNextRetry();
 
           function runNextRetry() {
+            if (_calcCancelled) { finishCrate([], null); return; }
             // 更新进度显示（使用小数推进来反映重试进度）
             var crateProgress = ci + 1 + (mixRound - 1) / maxRounds;
             updateCalcProgress(crateProgress, totalCrates, '混装 · 重试 ' + mixRound + '/' + maxRounds);
@@ -1157,7 +1172,7 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
-    openSidebar, closeSidebar,
+    openSidebar, closeSidebar, cancelCalc,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
