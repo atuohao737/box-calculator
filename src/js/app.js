@@ -886,6 +886,10 @@ window.App = (function() {
   }
 
   function calcReverse() {
+    // 清除旧的错误提示
+    var errDiv = document.getElementById('calc-error');
+    if (errDiv) { errDiv.style.display = 'none'; errDiv.innerHTML = ''; }
+
     // 获取纸箱列表
     S.syncFromDOM();
     var currentBoxes = S.getBoxValues();
