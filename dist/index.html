@@ -3988,25 +3988,32 @@ window.App = (function() {
     var listEl = document.getElementById('reverse-crate-list');
     if (!listEl) return;
     if (S.reverseCrateList.length === 0) {
-      listEl.innerHTML = '<div style="color:#bbb;font-size:12px;text-align:center;padding:8px 0">暂无标准木箱，请添加或从规格库导入</div>';
+      listEl.innerHTML = '<div style="color:#bbb;font-size:12px;text-align:center;padding:16px 0">暂无标准木箱，请添加或从规格库导入</div>';
       return;
     }
-    var html = '';
-    S.reverseCrateList.forEach(function(c, i) {
-      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin:4px 0;background:#fafafa;border-radius:6px;border:1px solid #eee">' +
-        '<span style="font-size:12px;font-weight:500;min-width:20px">#' + (i + 1) + '</span>' +
-        '<input type="text" value="' + (c.name || '') + '" placeholder="名称" style="width:70px;font-size:12px;padding:2px 4px;border:1px solid #d9d9d9;border-radius:4px" onchange="App.updateReverseCrateName(' + c.id + ', this.value)">' +
-        '<input type="number" value="' + (c.l || '') + '" placeholder="长" style="width:55px;font-size:12px;padding:2px 4px;border:1px solid #d9d9d9;border-radius:4px" onchange="App.updateReverseCrateDim(' + c.id + ', \'l\', this.value)">' +
-        '<span style="font-size:11px;color:#bbb">×</span>' +
-        '<input type="number" value="' + (c.w || '') + '" placeholder="宽" style="width:55px;font-size:12px;padding:2px 4px;border:1px solid #d9d9d9;border-radius:4px" onchange="App.updateReverseCrateDim(' + c.id + ', \'w\', this.value)">' +
-        '<span style="font-size:11px;color:#bbb">×</span>' +
-        '<input type="number" value="' + (c.h || '') + '" placeholder="高" style="width:55px;font-size:12px;padding:2px 4px;border:1px solid #d9d9d9;border-radius:4px" onchange="App.updateReverseCrateDim(' + c.id + ', \'h\', this.value)">' +
-        '<span style="font-size:10px;color:#999">mm</span>' +
-        '<input type="number" value="' + (c.maxWeight || '') + '" placeholder="承重kg" style="width:55px;font-size:12px;padding:2px 4px;border:1px solid #d9d9d9;border-radius:4px" onchange="App.updateReverseCrateDim(' + c.id + ', \'maxWeight\', this.value)">' +
-        '<button onclick="App.removeReverseCrate(' + c.id + ')" style="background:none;border:none;color:#ff4d4f;cursor:pointer;font-size:14px;padding:0 4px" title="删除">×</button>' +
-        '</div>';
-    });
-    listEl.innerHTML = html;
+    listEl.innerHTML = S.reverseCrateList.map(function(c, i) {
+      return '<div class="crate-item" style="position:relative">' +
+        '<div class="box-item-header">' +
+          '<span class="box-label">' +
+            '<span style="font-size:11px;color:#bbb;font-weight:600;margin-right:4px">#' + (i + 1) + '</span>' +
+            '<input id="rcn-' + c.id + '" value="' + (c.name || '').replace(/"/g, '&quot;') + '"' +
+              ' style="border:none;background:transparent;font-size:13px;font-weight:500;outline:none;min-width:60px;max-width:140px;cursor:text;padding:2px 4px;border-radius:4px;color:var(--text-input)"' +
+              ' onchange="App.updateReverseCrateName(' + c.id + ', this.value)"' +
+              ' onfocus="this.style.background=\'var(--bg-section-hover)\';this.style.outline=\'1px solid #1677ff\'"' +
+              ' onblur="this.style.background=\'transparent\';this.style.outline=\'none\'" title="点击编辑名称">' +
+          '</span>' +
+          '<button onclick="App.removeReverseCrate(' + c.id + ')" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:16px;padding:2px 4px;border-radius:4px;transition:color 0.2s" onmouseover="this.style.color=\'#ff4d4f\'" onmouseout="this.style.color=\'#ccc\'" title="删除">×</button>' +
+        '</div>' +
+        '<div class="form-row">' +
+          '<div class="field-group"><label>长 L (mm)</label><input type="number" id="rcl-' + c.id + '" value="' + (c.l || '') + '" min="1" style="width:100%" onchange="App.updateReverseCrateDim(' + c.id + ', \'l\', this.value)"></div>' +
+          '<div class="field-group"><label>宽 W (mm)</label><input type="number" id="rcw-' + c.id + '" value="' + (c.w || '') + '" min="1" style="width:100%" onchange="App.updateReverseCrateDim(' + c.id + ', \'w\', this.value)"></div>' +
+          '<div class="field-group"><label>高 H (mm)</label><input type="number" id="rch-' + c.id + '" value="' + (c.h || '') + '" min="1" style="width:100%" onchange="App.updateReverseCrateDim(' + c.id + ', \'h\', this.value)"></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+          '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:4px">承重(kg): <input type="number" id="rcmw-' + c.id + '" value="' + (c.maxWeight || '') + '" min="0" step="0.1" placeholder="不限制" style="width:80px;border:1px solid #d9d9d9;border-radius:4px;padding:2px 4px;font-size:11px;background:var(--bg-input);color:var(--text-input)" onchange="App.updateReverseCrateDim(' + c.id + ', \'maxWeight\', this.value)"></label>' +
+        '</div>' +
+      '</div>';
+    }).join('');
   }
 
   function updateReverseCrateName(id, name) {
