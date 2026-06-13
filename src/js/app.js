@@ -43,6 +43,7 @@ window.App = (function() {
 
   // 模式切换
   function setMode(mode) {
+    var prevMode = S.currentMode;
     S.currentMode = mode;
     document.getElementById('mode-btn-single').classList.toggle('active', mode === 'single');
     document.getElementById('mode-btn-mixed').classList.toggle('active', mode === 'mixed');
@@ -69,6 +70,12 @@ window.App = (function() {
       if (multiCrateArea) multiCrateArea.style.display = S.batchMode ? '' : 'none';
       if (batchBtn) batchBtn.style.display = '';
       document.getElementById('single-crate-actions').style.display = S.batchMode ? 'none' : '';
+    }
+    // 从反推模式切到其他模式时，清空需求数量输入框
+    // 反推模式的"需求数量"=总需求数（跨多个木箱），混装/单品模式的"需求数量"=每木箱限制
+    // 两者语义不同，残留值会导致计算异常
+    if (prevMode === 'reverse' && mode !== 'reverse') {
+      document.querySelectorAll('.qty-input').forEach(function(el) { el.value = ''; });
     }
     UI.renderBoxList();
   }
