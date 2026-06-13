@@ -7,7 +7,7 @@ window.Visualizer3D = (function() {
   let scene, camera, renderer, crateGroup, boxGroup;
   let threeWrap;
   const SCALE = 1 / 100;
-  let wireframeMode = false, crateVisible = true, orientationMarkers = true, crateDashedMode = false;
+  let wireframeMode = false, crateVisible = false, orientationMarkers = true, crateDashedMode = true;
   let crateDashedGroup = null; // 虚线边框组
 
   let isMouseDown = false, isRightDown = false;
@@ -79,6 +79,7 @@ window.Visualizer3D = (function() {
     boxGroup = new THREE.Group();
     scene.add(crateGroup);
     scene.add(boxGroup);
+    crateGroup.visible = crateVisible;
 
     // 木箱虚线边框组（始终可见，不受 crateVisible 影响）
     crateDashedGroup = new THREE.Group();
