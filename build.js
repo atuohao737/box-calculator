@@ -25,13 +25,13 @@ let html = fs.readFileSync(HTML_FILE, 'utf-8');
 // 替换 CSS link 为内联 <style>
 html = html.replace(
   /<link rel="stylesheet" href="css\/style\.css">/,
-  '<style>' + cssContent + '</style>'
+  function() { return '<style>' + cssContent + '</style>'; }
 );
 
 // 内联 Three.js（替换 <script src="lib/three.min.js"> 为内联脚本）
 html = html.replace(
   /<script src="lib\/three\.min\.js"><\/script>/,
-  '<script>\n' + threeContent + '\n</script>'
+  function() { return '<script>\n' + threeContent + '\n</script>'; }
 );
 
 // 内联所有模块脚本 <script src="js/xxx.js">
