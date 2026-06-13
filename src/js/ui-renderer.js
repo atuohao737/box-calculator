@@ -50,15 +50,12 @@ window.UIRenderer = (function() {
           '<div class="field-group"><label>宽 W (mm)</label><input type="number" id="bw-' + b.id + '" value="' + b.w + '" min="1"></div>' +
           '<div class="field-group"><label>高 H (mm)</label><input type="number" id="bh-' + b.id + '" value="' + b.h + '" min="1"></div>' +
         '</div>' +
-        '<div class="box-toggle" onclick="UI.toggleBoxExtra(' + b.id + ')" id="box-toggle-' + b.id + '">更多选项 <span class="box-toggle-arrow">▸</span></div>' +
-        '<div class="box-extra" id="box-extra-' + b.id + '">' +
-          '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
-            '<label id="ku-label-' + b.id + '" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;cursor:pointer;user-select:none" title="勾选后纸箱始终保持正放">' +
-              '<input type="checkbox" id="bu-' + b.id + '" ' + (b.keepUpright ? 'checked' : '') + ' style="cursor:pointer;margin:0">' +
-              '保持正放（禁止竖放）' +
-            '</label>' +
-            '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888">重量(kg): <input type="number" id="bwt-' + b.id + '" value="' + (b.weight || '') + '" min="0" step="0.01" placeholder="0" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:2px 4px;font-size:11px"></label>' +
-          '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
+          '<label id="ku-label-' + b.id + '" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;cursor:pointer;user-select:none" title="勾选后纸箱始终保持正放">' +
+            '<input type="checkbox" id="bu-' + b.id + '" ' + (b.keepUpright ? 'checked' : '') + ' style="cursor:pointer;margin:0">' +
+            '保持正放（禁止竖放）' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888">重量(kg): <input type="number" id="bwt-' + b.id + '" value="' + (b.weight || '') + '" min="0" step="0.01" placeholder="0" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:2px 4px;font-size:11px"></label>' +
         '</div>' +
         ((isMixed || isReverse) ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1" placeholder="不限"><span class="qty-hint">留空 = 尽量多</span></div>' : '') +
       '</div>';
@@ -545,15 +542,7 @@ window.UIRenderer = (function() {
     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
   }
 
-  function toggleBoxExtra(id) {
-    var el = document.getElementById('box-extra-' + id);
-    var toggle = document.getElementById('box-toggle-' + id);
-    if (!el || !toggle) return;
-    var isOpen = el.classList.toggle('open');
-    toggle.classList.toggle('open', isOpen);
-  }
-
-  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate, escapeHtml, toggleBoxExtra };
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate, escapeHtml };
   } catch(e) {
     console.error('[UIRenderer] 模块初始化失败:', e.message);
     var noop = function() {};
