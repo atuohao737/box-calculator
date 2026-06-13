@@ -767,10 +767,11 @@ window.Visualizer3D = (function() {
     setCamera(crateL, crateW, crateH);
 
     const info = document.getElementById('canvas-info');
+    var reverseBadge = mr.reverseCrateIdx !== undefined ? '🔁 木箱 #' + (mr.reverseCrateIdx + 1) + '<br>' : '';
     const breakdownHtml = mr.breakdown.filter(b => b.count > 0).map(b => {
       return escapeHtml(b.box.name) + ': <b>' + b.count + '个</b>';
     }).join('<br>');
-    info.innerHTML = '<b>🎲 混装方案</b><br>总装入: <b>' + mr.totalCount + ' 个</b><br>' + breakdownHtml + '<br>利用率: <b style="color:#52c41a">' + (mr.utilRate * 100).toFixed(1) + '%</b>';
+    info.innerHTML = reverseBadge + '<b>🎲 混装方案</b><br>总装入: <b>' + mr.totalCount + ' 个</b><br>' + breakdownHtml + '<br>利用率: <b style="color:#52c41a">' + (mr.utilRate * 100).toFixed(1) + '%</b>';
 
     const legendEl = document.getElementById('legend-overlay');
     legendEl.style.display = 'block';

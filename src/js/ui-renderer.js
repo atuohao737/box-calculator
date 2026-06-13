@@ -246,11 +246,21 @@ window.UIRenderer = (function() {
     crates.forEach(function(c, ci) {
       var crateHeaderBg = ci === s.reverseActiveCrateIdx ? '#e6f4ff' : '#fafafa';
       var crateHeaderBorder = ci === s.reverseActiveCrateIdx ? '#1677ff' : '#e8e8e8';
+      var utilPct = (c.utilRate * 100).toFixed(1);
+      var utilColor = c.utilRate > 0.7 ? '#52c41a' : c.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
       html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectReverseCrate(' + ci + ')">';
       html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
       html += '<div class="rc-title">📦 木箱 #' + (ci + 1) + '</div>';
-      html += '<div style="font-size:12px;color:#888">装 ' + c.totalCount + ' 个纸箱 | 利用率 ' + (c.utilRate * 100).toFixed(1) + '%</div>';
+      html += '<div style="font-size:12px;color:#888">装 ' + c.totalCount + ' 个纸箱</div>';
       html += '</div>';
+
+      // 利用率进度条
+      html += '<div style="padding:0 12px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:2px">' +
+          '<span>空间利用率</span><span style="font-weight:600;color:' + utilColor + '">' + utilPct + '%</span>' +
+        '</div>' +
+        '<div class="batch-util-bar"><div class="batch-util-fill" style="width:' + utilPct + '%;background:' + utilColor + '"></div></div>' +
+      '</div>';
 
       // 纸箱明细
       html += '<div style="padding:8px 12px;font-size:12px">';
@@ -287,25 +297,29 @@ window.UIRenderer = (function() {
     if (!rr || !rr.crates || !rr.crates[idx]) return;
     var c = rr.crates[idx];
     const V3 = Visualizer3D;
-    var isVisualActive = document.getElementById('panel-visual').classList.contains('active');
-    if (isVisualActive && V3.isReady()) {
-      // 构造混装结果格式供3D渲染
-      var positions = c.boxes.map(function(b) {
-        return {
-          x: b.pos.x, y: b.pos.y, z: b.pos.z,
-          l: b.pos.l, w: b.pos.w, h: b.pos.h,
-          rotated: b.pos.rotated,
-          boxIdx: b.boxIdx
-        };
-      });
-      var mixResultFor3D = {
-        crateL: rr.crateL, crateW: rr.crateW, crateH: rr.crateH,
-        displayCrateL: rr.crateL, displayCrateW: rr.crateW, displayCrateH: rr.crateH,
-        placed: positions,
-        totalCount: c.totalCount,
-        crateUtilRate: c.utilRate,
-        boxes: c.boxes.map(function(b) { return b.box; })
+    // 构造混装结果格式供3D渲染
+    var positions = c.boxes.map(function(b) {
+      return {
+        x: b.pos.x, y: b.pos.y, z: b.pos.z,
+        l: b.pos.l, w: b.pos.w, h: b.pos.h,
+        rotated: b.pos.rotated,
+        boxIdx: b.boxIdx
       };
+    });
+    var mixResultFor3D = {
+      crateL: rr.crateL, crateW: rr.crateW, crateH: rr.crateH,
+      displayCrateL: rr.crateL, displayCrateW: rr.crateW, displayCrateH: rr.crateH,
+      placed: positions,
+      totalCount: c.totalCount,
+      crateUtilRate: c.utilRate,
+      boxes: c.boxes.map(function(b) { return b.box; }),
+      reverseCrateIdx: idx  // 木箱编号标记
+    };
+    // 无论当前在哪个tab，都切换到3D视图
+    if (typeof App !== 'undefined' && App.switchTab) {
+      App.switchTab('visual');
+    }
+    if (V3 && V3.isReady()) {
       V3.renderMixedScene(mixResultFor3D);
     }
   }
