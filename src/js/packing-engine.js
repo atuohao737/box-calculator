@@ -34,13 +34,16 @@ window.PackingEngine = (function() {
       while (h + bH <= cH) {
         zCount++;
         h += bH;
-        if (zCount > 1 && layerGap > 0) h += layerGap;
+        if (zCount > 1 && layerGap > 0 && h + layerGap <= cH) h += layerGap;
       }
       let totalCount = xCount * yCount * zCount;
       const positions = [];
       const zhAtLevel = (z) => {
         let zz = gap;
-        for (let i = 0; i < z; i++) { zz += bH; if (i < zCount - 1 && layerGap > 0) zz += layerGap; }
+        for (let i = 0; i < z; i++) {
+          zz += bH;
+          if (i < zCount - 1 && layerGap > 0 && zz + layerGap + bH <= gap + cH) zz += layerGap;
+        }
         return zz;
       };
 
@@ -99,6 +102,30 @@ window.PackingEngine = (function() {
               for (let y = 0; y < fx; y++) {
                 positions.push({ x: gap + x * ybL, y: gap + yCount * bW + y * ybW, z: zh, l: ybL, w: ybW, h: ybH, rotated: true });
               }
+            }
+          }
+        }
+      }
+
+      // Z轴顶层填充（在顶部剩余高度内再排一层）
+      const usedH = zCount * bH + (zCount > 1 ? (zCount - 1) * layerGap : 0);
+      const remZ = cH - usedH;
+      if (remZ > 0 && zCount > 0) {
+        let zFillBest = { count: 0 };
+        for (const [rbL, rbW, rbH] of rotations) {
+          if (rbH > remZ) continue;
+          if (rbL > cL || rbW > cW) continue;
+          const fx = Math.floor(cL / rbL), fy = Math.floor(cW / rbW);
+          const n = fx * fy;
+          if (n > zFillBest.count) zFillBest = { count: n, bL: rbL, bW: rbW, bH: rbH, fx, fy };
+        }
+        if (zFillBest.count > 0) {
+          totalCount += zFillBest.count;
+          const { bL: zbL, bW: zbW, bH: zbH, fx, fy } = zFillBest;
+          const zOffset = usedH;
+          for (let x = 0; x < fx; x++) {
+            for (let y = 0; y < fy; y++) {
+              positions.push({ x: gap + x * zbL, y: gap + y * zbW, z: gap + zOffset, l: zbL, w: zbW, h: zbH, rotated: true });
             }
           }
         }
