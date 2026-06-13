@@ -168,6 +168,33 @@ window.UIRenderer = (function() {
       html += '<div><span style="color:#888">容积</span><br><b>' + vol + '</b> m³</div>';
       html += '</div>';
 
+      // 每种纸箱的装箱明细（混装模式从 breakdown 取，单品模式从 calcResults 取）
+      var breakdownHtml = '';
+      if (s.currentMode === 'mixed' && br.mixResult && br.mixResult.breakdown) {
+        br.mixResult.breakdown.forEach(function(item) {
+          if (item.count > 0) {
+            var dotColor = item.box && item.box.color ? item.box.color : '#888';
+            breakdownHtml += '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0">' +
+              '<span class="color-dot" style="background:' + dotColor + ';width:8px;height:8px;flex-shrink:0"></span>' +
+              escapeHtml(item.box ? item.box.name : '纸箱') + ' <b style="color:#1677ff">' + item.count + '</b> 个</div>';
+          }
+        });
+      } else if (br.calcResults) {
+        br.calcResults.forEach(function(cr) {
+          if (cr.result && cr.result.count > 0) {
+            breakdownHtml += '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0">' +
+              '<span class="color-dot" style="background:' + cr.box.color + ';width:8px;height:8px;flex-shrink:0"></span>' +
+              escapeHtml(cr.box.name) + ' <b style="color:#1677ff">' + cr.result.count + '</b> 个</div>';
+          }
+        });
+      }
+      if (breakdownHtml) {
+        html += '<div style="padding:0 12px 10px 12px;border-top:1px solid #f0f0f0;padding-top:10px">';
+        html += '<div style="font-size:11px;color:#888;margin-bottom:4px">纸箱组成</div>';
+        html += breakdownHtml;
+        html += '</div>';
+      }
+
       // 利用率进度条
       html += '<div style="padding:0 12px 12px 12px">' +
         '<div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:2px">' +
