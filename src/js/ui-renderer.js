@@ -151,7 +151,7 @@ window.UIRenderer = (function() {
       if (br._bestUtil) bestBadges += '<span class="batch-best-badge" style="background:#52c41a">⭐ 最佳利用率</span>';
       if (br._bestCount) bestBadges += '<span class="batch-best-badge" style="background:#1677ff">📊 最多数量</span>';
 
-      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ', true)">';
+      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ')">';
       html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
       html += '<div class="rc-title">📦 ' + escapeHtml(br.crate.name) + '</div>';
       html += '<div style="font-size:12px;color:#888">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm</div>';
@@ -285,14 +285,28 @@ window.UIRenderer = (function() {
     renderBatchResults();
 
     const V3 = Visualizer3D;
-    if (typeof App !== 'undefined' && App.switchTab) {
-      App.switchTab('visual');
-    }
+    // 手动切换到3D标签页（不调 App.switchTab，避免其内部的自动渲染覆盖）
+    document.querySelectorAll('.tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === 'visual');
+    });
+    document.querySelectorAll('.view-panel').forEach(function(p) {
+      p.classList.remove('active');
+    });
+    var visualPanel = document.getElementById('panel-visual');
+    if (visualPanel) visualPanel.classList.add('active');
+    document.querySelectorAll('.mtab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.mtab === 'visual');
+    });
+
+    // 自己控制 V3 初始化和渲染
     (function renderWhenReady(retries) {
       if (V3 && V3.isReady()) {
         V3.renderSingleScene(br.calcResults[boxIdx]);
-      } else if (retries < 15) {
-        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+      } else {
+        if (!V3 || !V3.isReady()) V3.init();
+        if (retries < 15) {
+          setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+        }
       }
     })(0);
   }
