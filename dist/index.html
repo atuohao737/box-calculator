@@ -5,15 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>标准木箱装箱计算器</title>
 <style>* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; overflow: hidden; }
 
-.app-header { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-.app-header h1 { font-size: 15px; font-weight: 600; color: #1a1a1a; }
-.app-header .subtitle { font-size: 12px; color: #888; margin-left: 8px; display: none; }
+:root {
+  --bg-body: #f0f2f5;
+  --bg-sidebar: #fff;
+  --bg-header: #fff;
+  --bg-card: #fff;
+  --bg-input: #fafafa;
+  --bg-section-hover: #f6faff;
+  --border-default: #e8e8e8;
+  --border-input: #d9d9d9;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-tertiary: #bbb;
+  --text-input: #1a1a1a;
+  --shadow-card: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+body.dark-theme {
+  --bg-body: #141824;
+  --bg-sidebar: #1a1e2e;
+  --bg-header: #1a1e2e;
+  --bg-card: #222639;
+  --bg-input: #2a2f45;
+  --bg-section-hover: #222639;
+  --border-default: #2a2f45;
+  --border-input: #3a4060;
+  --text-primary: #e0e4f0;
+  --text-secondary: #a0a8c0;
+  --text-muted: #8890a8;
+  --text-tertiary: #6a7090;
+  --text-input: #e0e4f0;
+  --shadow-card: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; overflow: hidden; }
+
+.app-header { background: var(--bg-header); border-bottom: 1px solid var(--border-default); padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.app-header h1 { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.app-header .subtitle { font-size: 12px; color: var(--text-muted); margin-left: 8px; display: none; }
 .header-actions { display: flex; gap: 6px; }
+.btn-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border-default); background: var(--bg-card); cursor: pointer; font-size: 16px; line-height: 1; padding: 0; transition: background 0.2s; }
+.btn-icon:hover { background: var(--bg-section-hover); }
 
 .layout { display: grid; grid-template-columns: 380px 1fr; height: calc(100vh - 56px); }
-.sidebar { background: #fff; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-default); display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 
 /* 移动端侧边栏遮罩 */
 .sidebar-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.4); }
@@ -21,23 +58,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 .sidebar-scroll { flex: 1; overflow-y: auto; }
 
-.sidebar-section { padding: 14px 16px; border-bottom: 1px solid #f0f0f0; }
-.sidebar-section h3 { font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+.sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border-default); }
+.sidebar-section h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
 
 /* 模式切换 */
-.mode-switch { display: flex; background: #f5f5f5; border-radius: 8px; padding: 3px; gap: 2px; }
-.mode-btn { flex: 1; padding: 7px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #888; transition: all 0.2s; text-align: center; }
-.mode-btn.active { background: #fff; color: #1677ff; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+.mode-switch { display: flex; background: var(--bg-section-hover); border-radius: 8px; padding: 3px; gap: 2px; }
+.mode-btn { flex: 1; padding: 7px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.2s; text-align: center; }
+.mode-btn.active { background: var(--bg-card); color: #1677ff; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 4px; }
 .form-row.two { grid-template-columns: 1fr 1fr; }
 .field-group { display: flex; flex-direction: column; gap: 2px; }
 .field-group label { font-size: 11px; color: #888; font-weight: 500; }
-.field-group input { border: 1px solid #d9d9d9; border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%; background: #fafafa; }
-.field-group input:focus { border-color: #1677ff; background: #fff; }
+.field-group input { border: 1px solid var(--border-input); border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%; background: var(--bg-input); color: var(--text-input); }
+.field-group input:focus { border-color: #1677ff; background: var(--bg-input); }
 
-.box-item { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; transition: opacity 0.2s, background 0.2s; }
-.box-item.box-item-disabled { opacity: 0.5; background: #f0f0f0; }
+.box-item { background: var(--bg-section-hover); border: 1px solid var(--border-default); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; transition: opacity 0.2s, background 0.2s; }
+.box-item.box-item-disabled { opacity: 0.5; background: var(--bg-body); }
 .box-item.box-item-disabled input { pointer-events: none; }
 .box-item.box-item-disabled .spec-del-btn { pointer-events: none; }
 .box-check-label { display: flex; align-items: center; cursor: pointer; margin-right: 6px; flex-shrink: 0; }
@@ -91,13 +128,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 .calc-btn-area {
   flex-shrink: 0;
-  background: #fff;
-  border-top: 1px solid #f0f0f0;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-default);
   padding: 14px 16px;
 }
 .main-view { display: flex; flex-direction: column; overflow: hidden; }
-.tabs { display: flex; border-bottom: 1px solid #e8e8e8; background: #fff; padding: 0 16px; gap: 0; }
-.tab { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #666; transition: all 0.2s; }
+.tabs { display: flex; border-bottom: 1px solid var(--border-default); background: var(--bg-header); padding: 0 16px; gap: 0; }
+.tab { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: all 0.2s; }
 .tab.active { color: #1677ff; border-bottom-color: #1677ff; font-weight: 500; }
 .tab:hover:not(.active) { color: #333; }
 
@@ -129,7 +166,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .tip-overlay .tip-head { font-weight: 600; color: #60a5fa; margin-bottom: 4px; font-size: 13px; }
 .tip-overlay .tip-row { padding-left: 4px; color: #ccc; }
 
-.three-controls { background: #fff; border-top: 1px solid #e8e8e8; padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.three-controls { background: var(--bg-header); border-top: 1px solid var(--border-default); padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .scheme-tabs { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .scheme-tab { padding: 4px 10px; border-radius: 20px; font-size: 11px; cursor: pointer; border: 1px solid #d9d9d9; background: #fff; color: #666; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
 .scheme-tab.active { border-color: #1677ff; background: #e6f4ff; color: #1677ff; }
@@ -138,8 +175,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .view-btn:hover { background: #2a3050; color: #fff; border-color: #60a5fa; }
 
 .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.result-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 14px; transition: box-shadow 0.2s; }
-.result-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.result-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px; padding: 14px; transition: box-shadow 0.2s; }
+.result-card:hover { box-shadow: var(--shadow-card); }
 .result-card.best { border-color: #52c41a; }
 .result-card.mixed-card { border-color: #1677ff; grid-column: 1 / -1; }
 .result-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
@@ -242,8 +279,8 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
 .box-item .spec-del-btn:hover { opacity: 1; }
 
 /* 移动端底部 Tab 导航 */
-.mobile-tab-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #e8e8e8; z-index: 150; padding: 4px 0 env(safe-area-inset-bottom, 0); }
-.mobile-tab-bar .mtab { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border: none; background: none; color: #888; font-size: 10px; cursor: pointer; gap: 2px; }
+.mobile-tab-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-header); border-top: 1px solid var(--border-default); z-index: 150; padding: 4px 0 env(safe-area-inset-bottom, 0); }
+.mobile-tab-bar .mtab { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border: none; background: none; color: var(--text-muted); font-size: 10px; cursor: pointer; gap: 2px; }
 .mobile-tab-bar .mtab .mtab-icon { font-size: 20px; }
 .mobile-tab-bar .mtab.active { color: #1677ff; }
 
@@ -320,6 +357,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
     <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
   </div>
   <div class="header-actions">
+    <button class="btn btn-icon btn-theme" id="btn-theme-toggle" onclick="App.toggleTheme()" title="切换深色/浅色主题">🌙</button>
     <button class="btn btn-outline btn-sm" onclick="App.exportResult()">导出</button>
     <button class="btn btn-sm" style="background:#f5f5f5;border:1px solid #d9d9d9;color:#666" onclick="App.clearAll()">重置</button>
   </div>
@@ -3132,6 +3170,26 @@ window.App = (function() {
   const V3 = Visualizer3D;
   const UI = UIRenderer;
 
+  // 主题切换
+  function toggleTheme() {
+    var body = document.body;
+    var btn = document.getElementById('btn-theme-toggle');
+    body.classList.toggle('dark-theme');
+    var isDark = body.classList.contains('dark-theme');
+    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+    try { localStorage.setItem('box-calc-theme', isDark ? 'dark' : 'light'); } catch(e) {}
+  }
+
+  function initTheme() {
+    var saved = 'light';
+    try { saved = localStorage.getItem('box-calc-theme') || 'light'; } catch(e) {}
+    if (saved === 'dark') {
+      document.body.classList.add('dark-theme');
+      var btn = document.getElementById('btn-theme-toggle');
+      if (btn) btn.textContent = '☀️';
+    }
+  }
+
   // 侧边栏（移动端）
   function openSidebar() {
     document.getElementById('sidebar-panel').classList.add('open');
@@ -4279,6 +4337,9 @@ window.App = (function() {
         if (el) el.addEventListener('input', updateCrateVol);
       });
 
+      // 初始化主题
+      initTheme();
+
       console.log('[App] 初始化完成 - 模式:', S.currentMode);
     } catch(e) {
       console.error('[App] 初始化失败:', e.message, e.stack);
@@ -4294,7 +4355,7 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
-    openSidebar, closeSidebar, cancelCalc,
+    openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },

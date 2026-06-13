@@ -10,6 +10,26 @@ window.App = (function() {
   const V3 = Visualizer3D;
   const UI = UIRenderer;
 
+  // 主题切换
+  function toggleTheme() {
+    var body = document.body;
+    var btn = document.getElementById('btn-theme-toggle');
+    body.classList.toggle('dark-theme');
+    var isDark = body.classList.contains('dark-theme');
+    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+    try { localStorage.setItem('box-calc-theme', isDark ? 'dark' : 'light'); } catch(e) {}
+  }
+
+  function initTheme() {
+    var saved = 'light';
+    try { saved = localStorage.getItem('box-calc-theme') || 'light'; } catch(e) {}
+    if (saved === 'dark') {
+      document.body.classList.add('dark-theme');
+      var btn = document.getElementById('btn-theme-toggle');
+      if (btn) btn.textContent = '☀️';
+    }
+  }
+
   // 侧边栏（移动端）
   function openSidebar() {
     document.getElementById('sidebar-panel').classList.add('open');
@@ -1157,6 +1177,9 @@ window.App = (function() {
         if (el) el.addEventListener('input', updateCrateVol);
       });
 
+      // 初始化主题
+      initTheme();
+
       console.log('[App] 初始化完成 - 模式:', S.currentMode);
     } catch(e) {
       console.error('[App] 初始化失败:', e.message, e.stack);
@@ -1172,7 +1195,7 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
-    openSidebar, closeSidebar, cancelCalc,
+    openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx) { UI.selectBatchCrate(idx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
