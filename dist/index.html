@@ -3758,7 +3758,7 @@ window.App = (function() {
             updateCalcProgress(crateProgress, totalCrates, '混装 · 重试 ' + mixRound + '/' + maxRounds);
 
             if (mixRound >= maxRounds) {
-              var filled = PE.fillGaps(mixBest, boxConfigs, crateL, crateW, crateH, gap, allowRotate);
+              var filled = PE.fillGaps(mixBest, boxConfigs, cL, cW, cH, gap, allowRotate);
               if (filled) mixBest = filled;
               if (mixBest) {
                 mixBest.displayCrateL = cL;
