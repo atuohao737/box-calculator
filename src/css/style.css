@@ -118,6 +118,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .btn-outline { background: #fff; color: #1677ff; border: 1px solid #1677ff; }
 .btn-outline:hover { background: #e6f4ff; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-xs { padding: 2px 8px; font-size: 11px; line-height: 1.6; border-radius: 4px; cursor: pointer; }
 .btn-danger { background: #fff0f0; color: #ff4d4f; border: 1px solid #ffccc7; }
 
 .calc-btn-area {

@@ -164,11 +164,11 @@ window.UIRenderer = (function() {
 
       // 关键指标
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 10px 12px;font-size:13px">';
-      html += '<div><span style="color:#888">装箱数量</span><br><b style="color:#1677ff;font-size:16px">' + (maxCount || '-') + '</b> 个</div>';
+      html += '<div><span style="color:#888">' + (s.currentMode === 'mixed' ? '总装箱数' : '最多装箱数') + '</span><br><b style="color:#1677ff;font-size:16px">' + (maxCount || '-') + '</b> 个</div>';
       html += '<div><span style="color:#888">容积</span><br><b>' + vol + '</b> m³</div>';
       html += '</div>';
 
-      // 每种纸箱的装箱明细（混装模式从 breakdown 取，单品模式从 calcResults 取）
+      // 每种纸箱的装箱明细
       var breakdownHtml = '';
       if (s.currentMode === 'mixed' && br.mixResult && br.mixResult.breakdown) {
         br.mixResult.breakdown.forEach(function(item) {
@@ -180,11 +180,17 @@ window.UIRenderer = (function() {
           }
         });
       } else if (br.calcResults) {
-        br.calcResults.forEach(function(cr) {
+        br.calcResults.forEach(function(cr, ci) {
           if (cr.result && cr.result.count > 0) {
-            breakdownHtml += '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0">' +
+            var isBest = cr.isBest;
+            breakdownHtml += '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0;justify-content:space-between">' +
+              '<div style="display:flex;align-items:center;gap:6px;min-width:0">' +
               '<span class="color-dot" style="background:' + cr.box.color + ';width:8px;height:8px;flex-shrink:0"></span>' +
-              escapeHtml(cr.box.name) + ' <b style="color:#1677ff">' + cr.result.count + '</b> 个</div>';
+              escapeHtml(cr.box.name) + ' <b style="color:#1677ff">' + cr.result.count + '</b> 个' +
+              (isBest ? ' <span style="font-size:10px;color:#52c41a">⭐最优</span>' : '') +
+              '</div>' +
+              '<button class="btn-outline btn-xs" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
+              '</div>';
           }
         });
       }
@@ -246,6 +252,27 @@ window.UIRenderer = (function() {
         }
       })(0);
     }
+  }
+
+  // 批量单品模式下，点击纸箱跳转到对应3D视图
+  function selectBatchBox(crateIdx, boxIdx) {
+    const S = AppState;
+    S.batchActiveCrateIdx = crateIdx;
+    const br = S.batchResults[crateIdx];
+    if (!br || !br.calcResults || !br.calcResults[boxIdx]) return;
+    renderBatchResults();
+
+    const V3 = Visualizer3D;
+    if (typeof App !== 'undefined' && App.switchTab) {
+      App.switchTab('visual');
+    }
+    (function renderWhenReady(retries) {
+      if (V3 && V3.isReady()) {
+        V3.renderSingleScene(br.calcResults[boxIdx]);
+      } else if (retries < 15) {
+        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+      }
+    })(0);
   }
 
   // ============================================================
@@ -606,7 +633,7 @@ window.UIRenderer = (function() {
     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
   }
 
-  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, renderReverseResults, selectReverseCrate, escapeHtml };
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, selectBatchBox, renderReverseResults, selectReverseCrate, escapeHtml };
   } catch(e) {
     console.error('[UIRenderer] 模块初始化失败:', e.message);
     var noop = function() {};

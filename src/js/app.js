@@ -1242,7 +1242,7 @@ window.App = (function() {
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
-    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
+    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
     // 反推模式
     addReverseCrate, removeReverseCrate, updateReverseCrateName, updateReverseCrateDim,
     batchImportReverseCrates, selectReverseCrate: function(idx) { UI.selectReverseCrate(idx); }
@@ -1263,7 +1263,7 @@ window.App = (function() {
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
       updateCrateVolUI: function(){}, updateCrateNameUI: function(){},
-      batchImportCrates: function(){}, selectBatchCrate: function(){}, toggleBoxEnabled: function(){},
+      batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, toggleBoxEnabled: function(){},
       addReverseCrate: function(){}, removeReverseCrate: function(){}, updateReverseCrateName: function(){}, updateReverseCrateDim: function(){},
       batchImportReverseCrates: function(){}, selectReverseCrate: function(){}
     };
