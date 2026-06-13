@@ -3167,14 +3167,18 @@ window.UIRenderer = (function() {
   function renderSchemaTabs() {
     const s = AppState;
     const cont = document.getElementById('scheme-tabs');
-    // 批量模式：显示木箱选择标签
+    // 批量模式：混装显示木箱选择标签，单品模式不显示（通过纸箱3D按钮切换）
     if (s.batchMode && s.batchResults && s.batchResults.length > 0) {
-      cont.innerHTML = s.batchResults.map(function(br, i) {
-        return '<button class="scheme-tab ' + (i === s.batchActiveCrateIdx ? 'active' : '') + '" onclick="App.selectBatchCrate(' + i + ')">' +
-          '<span class="color-dot" style="background:' + br.crate.color + '"></span>' +
-          escapeHtml(br.crate.name) + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
-        '</button>';
-      }).join('');
+      if (s.currentMode === 'mixed') {
+        cont.innerHTML = s.batchResults.map(function(br, i) {
+          return '<button class="scheme-tab ' + (i === s.batchActiveCrateIdx ? 'active' : '') + '" onclick="App.selectBatchCrate(' + i + ', true)">' +
+            '<span class="color-dot" style="background:' + br.crate.color + '"></span>' +
+            escapeHtml(br.crate.name) + ' ' + (br._maxCount > 0 ? '<b>' + br._maxCount + '个</b>' : '×') +
+          '</button>';
+        }).join('');
+      } else {
+        cont.innerHTML = '<span style="font-size:12px;color:#bbb">点击纸箱的 3D 按钮查看布局</span>';
+      }
       return;
     }
 
