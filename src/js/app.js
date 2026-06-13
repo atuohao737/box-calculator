@@ -77,6 +77,10 @@ window.App = (function() {
     if (prevMode === 'reverse' && mode !== 'reverse') {
       document.querySelectorAll('.qty-input').forEach(function(el) { el.value = ''; });
     }
+    // 切换到反推模式时清空底部方案tab
+    if (mode === 'reverse') {
+      document.getElementById('scheme-tabs').innerHTML = '';
+    }
     UI.renderBoxList();
   }
 
@@ -978,6 +982,7 @@ window.App = (function() {
         S.reverseActiveCrateIdx = 0;
 
         UI.renderReverseResults();
+        UI.renderSchemaTabs();
 
         // 保存历史
         SM.saveHistory({ mode: 'reverse', reverseResult: S.reverseResult, timestamp: Date.now() });
