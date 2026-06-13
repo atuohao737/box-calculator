@@ -171,6 +171,7 @@ window.UIRenderer = (function() {
       // 每种纸箱的装箱明细
       var breakdownHtml = '';
       if (s.currentMode === 'mixed' && br.mixResult && br.mixResult.breakdown) {
+        // 混装模式：简单列表
         br.mixResult.breakdown.forEach(function(item) {
           if (item.count > 0) {
             var dotColor = item.box && item.box.color ? item.box.color : '#888';
@@ -180,27 +181,47 @@ window.UIRenderer = (function() {
           }
         });
       } else if (br.calcResults) {
+        // 单品模式：三列布局 - 纸箱 | 利用率 | 3D
+        breakdownHtml += '<div style="display:flex;flex-direction:column;gap:6px">';
         br.calcResults.forEach(function(cr, ci) {
           if (cr.result && cr.result.count > 0) {
             var isBest = cr.isBest;
-            breakdownHtml += '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0;justify-content:space-between">' +
-              '<div style="display:flex;align-items:center;gap:6px;min-width:0">' +
-              '<span class="color-dot" style="background:' + cr.box.color + ';width:8px;height:8px;flex-shrink:0"></span>' +
-              escapeHtml(cr.box.name) + ' <b style="color:#1677ff">' + cr.result.count + '</b> 个' +
-              (isBest ? ' <span style="font-size:10px;color:#52c41a">⭐最优</span>' : '') +
-              '</div>' +
-              '<button class="btn-outline btn-xs" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
+            var boxUtilPct = (cr.result.utilRate * 100).toFixed(1);
+            var boxUtilColor = cr.result.utilRate > 0.7 ? '#52c41a' : cr.result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
+            breakdownHtml +=
+              '<div style="display:grid;grid-template-columns:1fr 80px 44px;align-items:center;gap:6px;font-size:12px;padding:4px 0;border-bottom:1px solid #f5f5f5">' +
+                // 第一列：纸箱名 + 数量
+                '<div style="display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden">' +
+                  '<span class="color-dot" style="background:' + cr.box.color + ';width:8px;height:8px;flex-shrink:0"></span>' +
+                  '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(cr.box.name) + '</span>' +
+                  '<b style="color:#1677ff;flex-shrink:0">' + cr.result.count + '</b>' +
+                  (isBest ? ' <span style="font-size:10px;color:#52c41a;flex-shrink:0">⭐</span>' : '') +
+                '</div>' +
+                // 第二列：单个纸箱的利用率进度条
+                '<div style="display:flex;align-items:center;gap:4px">' +
+                  '<div style="flex:1;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden">' +
+                    '<div style="height:100%;width:' + boxUtilPct + '%;background:' + boxUtilColor + ';border-radius:3px;transition:width 0.3s"></div>' +
+                  '</div>' +
+                  '<span style="font-size:10px;font-weight:600;color:' + boxUtilColor + ';flex-shrink:0">' + boxUtilPct + '%</span>' +
+                '</div>' +
+                // 第三列：3D按钮
+                '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
               '</div>';
           }
         });
+        breakdownHtml += '</div>';
       }
       if (breakdownHtml) {
         html += '<div style="padding:0 12px 10px 12px;border-top:1px solid #f0f0f0;padding-top:10px">';
-        html += '<div style="font-size:11px;color:#888;margin-bottom:4px">纸箱组成</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 80px 44px;gap:6px;font-size:11px;color:#888;margin-bottom:4px">';
+        html += '<span>纸箱组成</span><span style="text-align:center">利用率</span><span></span>';
+        html += '</div>';
         html += breakdownHtml;
         html += '</div>';
       }
-
+      // 单品模式每行已有各纸箱的利用率，移除底部总进度条
+      // 混装模式保留总利用率进度条
+      if (s.currentMode === 'mixed') {
       // 利用率进度条
       html += '<div style="padding:0 12px 12px 12px">' +
         '<div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:2px">' +
@@ -208,6 +229,7 @@ window.UIRenderer = (function() {
         '</div>' +
         '<div class="batch-util-bar"><div class="batch-util-fill" style="width:' + utilPct + '%;background:' + utilColor + '"></div></div>' +
       '</div>';
+      }
 
       // 如果无法装入
       if (maxCount === 0) {
