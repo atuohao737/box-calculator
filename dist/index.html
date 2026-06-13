@@ -2658,7 +2658,7 @@ window.UIRenderer = (function() {
           '</label>' +
           '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888">重量(kg): <input type="number" id="bwt-' + b.id + '" value="' + (b.weight || '') + '" min="0" step="0.01" placeholder="0" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:2px 4px;font-size:11px"></label>' +
         '</div>' +
-        ((isMixed || isReverse) ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1" placeholder="不限"><span class="qty-hint">留空 = 尽量多</span></div>' : '') +
+        ((isMixed || isReverse) ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1"' + (isReverse ? ' placeholder="必填"' : ' placeholder="不限"') + '><span class="qty-hint">' + (isReverse ? '反推模式下必须填写数量' : '留空 = 尽量多') + '</span></div>' : '') +
       '</div>';
     }).join('');
   }
@@ -4094,6 +4094,20 @@ window.App = (function() {
       if (!b.l || !b.w || !b.h || b.l <= 0 || b.w <= 0 || b.h <= 0) {
         UI.showError(UI.escapeHtml(b.name) + ' 的尺寸不完整'); return;
       }
+    }
+
+    // 验证纸箱需求数量
+    var noQtyBoxes = [];
+    for (var qi = 0; qi < activeBoxes.length; qi++) {
+      var bq = activeBoxes[qi];
+      var qtyRaw = bq.qty;
+      if (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null || qtyRaw === 0 || qtyRaw === '0') {
+        noQtyBoxes.push(UI.escapeHtml(bq.name));
+      }
+    }
+    if (noQtyBoxes.length > 0) {
+      UI.showError('以下纸箱未填写需求数量：<br><b>' + noQtyBoxes.join('</b>、<b>') + '</b><br><span style="font-size:12px;color:#888">请为每个纸箱填写需要装入的数量</span>');
+      return;
     }
 
     // 获取反推木箱列表

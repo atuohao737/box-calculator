@@ -57,7 +57,7 @@ window.UIRenderer = (function() {
           '</label>' +
           '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888">重量(kg): <input type="number" id="bwt-' + b.id + '" value="' + (b.weight || '') + '" min="0" step="0.01" placeholder="0" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:2px 4px;font-size:11px"></label>' +
         '</div>' +
-        ((isMixed || isReverse) ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1" placeholder="不限"><span class="qty-hint">留空 = 尽量多</span></div>' : '') +
+        ((isMixed || isReverse) ? '<div class="qty-row"><label>需求数量:</label><input type="number" id="bq-' + b.id + '" class="qty-input" value="' + (b.qty || '') + '" min="1"' + (isReverse ? ' placeholder="必填"' : ' placeholder="不限"') + '><span class="qty-hint">' + (isReverse ? '反推模式下必须填写数量' : '留空 = 尽量多') + '</span></div>' : '') +
       '</div>';
     }).join('');
   }

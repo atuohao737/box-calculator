@@ -901,6 +901,20 @@ window.App = (function() {
       }
     }
 
+    // 验证纸箱需求数量
+    var noQtyBoxes = [];
+    for (var qi = 0; qi < activeBoxes.length; qi++) {
+      var bq = activeBoxes[qi];
+      var qtyRaw = bq.qty;
+      if (qtyRaw === '' || qtyRaw === undefined || qtyRaw === null || qtyRaw === 0 || qtyRaw === '0') {
+        noQtyBoxes.push(UI.escapeHtml(bq.name));
+      }
+    }
+    if (noQtyBoxes.length > 0) {
+      UI.showError('以下纸箱未填写需求数量：<br><b>' + noQtyBoxes.join('</b>、<b>') + '</b><br><span style="font-size:12px;color:#888">请为每个纸箱填写需要装入的数量</span>');
+      return;
+    }
+
     // 获取反推木箱列表
     var crateList = [];
     S.reverseCrateList.forEach(function(c) {
