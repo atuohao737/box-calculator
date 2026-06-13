@@ -333,9 +333,15 @@ window.UIRenderer = (function() {
     if (typeof App !== 'undefined' && App.switchTab) {
       App.switchTab('visual');
     }
-    if (V3 && V3.isReady()) {
-      V3.renderMixedScene(mixResultFor3D);
-    }
+    // 延迟渲染，确保 V3 初始化完成后再执行
+    // 第一次切换到3D标签时 V3.init() 在 switchTab 的 setTimeout(60ms) 中执行
+    (function renderWhenReady(retries) {
+      if (V3 && V3.isReady()) {
+        V3.renderMixedScene(mixResultFor3D);
+      } else if (retries < 15) {
+        setTimeout(function() { renderWhenReady(retries + 1); }, 80);
+      }
+    })(0);
   }
 
   function renderSingleCard(cr, idx) {
