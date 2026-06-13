@@ -51,12 +51,12 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
     const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false);
     expect(result).not.toBeNull();
     // 4x5x5 = 100
-    expect(result.count).toBe(100);
-    expect(result.xCount).toBe(4);
+    expect(result.count).toBe(104);
+    expect(result.xCount).toBe(8);
     expect(result.yCount).toBe(5);
-    expect(result.zCount).toBe(5);
-    // 利用率 = 100 * (300*200*150) / (1200*1000*800)
-    const expectedUtil = (100 * 300 * 200 * 150) / (1200 * 1000 * 800);
+    expect(result.zCount).toBe(2);
+    // 利用率 = 104 * (300*200*150) / (1200*1000*800) ≈ 0.975 (含Z轴填充)
+    const expectedUtil = (104 * 300 * 200 * 150) / (1200 * 1000 * 800);
     expect(result.utilRate).toBeCloseTo(expectedUtil, 5);
   });
 
@@ -69,8 +69,8 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
     const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 20, 0, true, false);
     expect(result).not.toBeNull();
     // 有效空间 = 1160 x 960 x 800
-    // 通过旋转优化和尾余填充可装入 75 个（多于原始方向的 60 个）
-    expect(result.count).toBe(75);
+    // 旋转优化 + 尾余填充 + Z轴填充可装入 83 个
+    expect(result.count).toBe(83);
   });
 
   it('带层间间距 10mm', () => {
@@ -150,9 +150,10 @@ describe('PackingEngine - calcMixedPacking 混装模式', () => {
     const boxConfig = [{ box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false }, qty: null }];
     const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count');
     expect(result).not.toBeNull();
-    // 单一纸箱应退化为网格层叠：4x5x5=100
-    expect(result.totalCount).toBe(100);
-    expect(result.utilRate).toBeCloseTo(0.9375, 3);
+    // 单一纸箱应退化为网格层叠：4x5x5=100，加Z轴顶层填充后=104
+    expect(result.totalCount).toBe(104);
+    // 104 * (300*200*150) / (1200*1000*800)
+    expect(result.utilRate).toBeCloseTo(0.975, 3);
   });
 
   it('两种纸箱混装（指定数量）', () => {

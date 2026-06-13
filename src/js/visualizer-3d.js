@@ -697,9 +697,9 @@ window.Visualizer3D = (function() {
     if (!scene) return;
     clearScene();
     const { placed } = mr;
-    const crateL = mr.displayCrateL || mr.crateL_raw || (mr.crateL + (mr.gap || 0) * 2) || 1200;
-    const crateW = mr.displayCrateW || mr.crateW_raw || (mr.crateW + (mr.gap || 0) * 2) || 1000;
-    const crateH = mr.displayCrateH || mr.crateH_raw || (mr.crateH + (mr.gap || 0) * 2) || 800;
+    const crateL = mr.displayCrateL || mr.crateL_raw || 1200;
+    const crateW = mr.displayCrateW || mr.crateW_raw || 1000;
+    const crateH = mr.displayCrateH || mr.crateH_raw || 800;
     const s = SCALE;
 
     drawCrate(crateL, crateW, crateH);

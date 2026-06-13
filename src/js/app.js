@@ -511,7 +511,7 @@ window.App = (function() {
               res.weightRate = totalWeight / maxWeight;
               res.weightLimited = false;
             }
-            return { box: b, crateL: cL, crateW: cW, crateH: cH, gap: gap, result: res };
+            return { box: b, crateL: cL, crateW: cW, crateH: cH, crateL_raw: cL, gap: gap, result: res };
           });
           var bestIdx = 0;
           for (var i = 1; i < crCalcResults.length; i++) {
@@ -522,7 +522,7 @@ window.App = (function() {
           if (crCalcResults[bestIdx] && crCalcResults[bestIdx].result) crCalcResults[bestIdx].isBest = true;
           finishCrate(crCalcResults, null);
         } else {
-          // 混装模式 — 异步重试，每条重试后让出主线程
+          // 混装模式 — 委托 calcMixedPacking 处理：单箱降级、多轮重试、fillGaps、Z 填充
           var sortedBoxes2 = activeBoxes.slice().sort(function(a, b2) {
             var wa = parseFloat(a.weight) || 0, wb = parseFloat(b2.weight) || 0;
             return wb - wa;
@@ -533,96 +533,29 @@ window.App = (function() {
             return { box: b, qty: qty };
           });
 
-          var mixBest = null;
-          var mixRound = 0;
-          var maxRounds = Math.max(1, Math.min(50, retryCount || 10));
-          var isUtilStrat = S.mixStrategy === 'util';
-          var mixIndices = boxConfigs.map(function(_, i) { return i; });
+          var progressText = modeLabel + ' · 正在计算 ' + (ci + 1) + '/' + totalCrates + ' 号木箱';
+          updateCalcProgress(ci + 1, totalCrates, progressText);
 
-          // 第一轮：体积降序
-          mixBest = PE.calcMixedPackingOnce(cL, cW, cH, boxConfigs, gap, allowRotate, null);
-          if (!mixBest || mixBest.totalCount === 0) {
-            finishCrate([], null);
-            return;
+          var mixBest = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+
+          if (mixBest && mixBest.totalCount > 0) {
+            mixBest.displayCrateL = cL;
+            mixBest.displayCrateW = cW;
+            mixBest.displayCrateH = cH;
+            mixBest.strategy = S.mixStrategy;
+            if (maxWeight > 0) {
+              var tW = 0;
+              (mixBest.placed || []).forEach(function(p) {
+                var bw2 = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
+                tW += bw2;
+              });
+              mixBest.totalWeight = tW;
+              mixBest.maxWeight = maxWeight;
+              mixBest.weightRate = tW / maxWeight;
+              mixBest.weightOverLimit = tW > maxWeight;
+            }
           }
-          // 空间优先 → 智能组合探索
-          if (isUtilStrat) {
-            var freeCount = 0;
-            for (var fi = 0; fi < boxConfigs.length; fi++) {
-              if (boxConfigs[fi].qty === null) freeCount++;
-            }
-            if (freeCount >= 2 && freeCount <= 3) {
-              var explorer = PE.exploreCombinations(cL, cW, cH, boxConfigs, gap, allowRotate);
-              if (explorer && explorer.utilRate > mixBest.utilRate) mixBest = explorer;
-            }
-          }
-          mixRound = 1;
-
-          runNextRetry();
-
-          function runNextRetry() {
-            if (_calcCancelled) { finishCrate([], null); return; }
-            // 更新进度显示（使用小数推进来反映重试进度）
-            var crateProgress = ci + 1 + (mixRound - 1) / maxRounds;
-            updateCalcProgress(crateProgress, totalCrates, '混装 · 重试 ' + mixRound + '/' + maxRounds);
-
-            if (mixRound >= maxRounds) {
-              var filled = PE.fillGaps(mixBest, boxConfigs, cL, cW, cH, gap, allowRotate);
-              if (filled) mixBest = filled;
-              if (mixBest) {
-                mixBest.displayCrateL = cL;
-                mixBest.displayCrateW = cW;
-                mixBest.displayCrateH = cH;
-                mixBest.strategy = S.mixStrategy;
-                if (maxWeight > 0) {
-                  var tW = 0;
-                  (mixBest.placed || []).forEach(function(p) {
-                    var bw2 = parseFloat(boxConfigs[p.boxIdx] && boxConfigs[p.boxIdx].box && boxConfigs[p.boxIdx].box.weight) || 0;
-                    tW += bw2;
-                  });
-                  mixBest.totalWeight = tW;
-                  mixBest.maxWeight = maxWeight;
-                  mixBest.weightRate = tW / maxWeight;
-                  mixBest.weightOverLimit = tW > maxWeight;
-                }
-              }
-              finishCrate([], mixBest);
-              return;
-            }
-
-            mixRound++;
-
-            // Fisher-Yates 洗牌
-            var shuffled = mixIndices.slice();
-            for (var si = shuffled.length - 1; si > 0; si--) {
-              var sj = Math.floor(Math.random() * (si + 1));
-              var tmp = shuffled[si]; shuffled[si] = shuffled[sj]; shuffled[sj] = tmp;
-            }
-            // 同体积段随机化
-            var shuffledByVol = mixIndices.slice().sort(function(ai, bi) {
-              var vA = boxConfigs[ai].box.l * boxConfigs[ai].box.w * boxConfigs[ai].box.h;
-              var vB = boxConfigs[bi].box.l * boxConfigs[bi].box.w * boxConfigs[bi].box.h;
-              if (Math.abs(vA - vB) < 100) return Math.random() - 0.5;
-              return vB - vA;
-            });
-
-            var candidate = PE.calcMixedPackingOnce(cL, cW, cH, boxConfigs, gap, allowRotate, shuffledByVol);
-            if (candidate) {
-              if (isUtilStrat) {
-                if (candidate.utilRate > mixBest.utilRate + 0.0001 ||
-                    (Math.abs(candidate.utilRate - mixBest.utilRate) < 0.0001 && candidate.totalCount > mixBest.totalCount)) {
-                  mixBest = candidate;
-                }
-              } else {
-                if (candidate.totalCount > mixBest.totalCount ||
-                    (candidate.totalCount === mixBest.totalCount && candidate.utilRate > mixBest.utilRate)) {
-                  mixBest = candidate;
-                }
-              }
-            }
-
-            setTimeout(runNextRetry, 0);
-          }
+          finishCrate([], mixBest);
         }
       } catch(e) {
         hideCalcProgress();

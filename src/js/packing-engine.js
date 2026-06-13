@@ -183,8 +183,12 @@ window.PackingEngine = (function() {
     let spaces = [{ x: gap, y: gap, z: gap, l: cL, w: cW, h: cH }];
     const placed = [];
 
-    // 使用传入的排序顺序
+    // 使用传入的排序顺序。默认策略：有数量限制的纸箱优先，同组内按体积降序
     const sortedIndices = sortOrder || boxList.map((_, i) => i).sort((a, b) => {
+      // 有 qty 限制的优先放置（必须满足需求，避免被无限量纸箱占满空间）
+      const aLimited = boxList[a].qty !== null ? 0 : 1;
+      const bLimited = boxList[b].qty !== null ? 0 : 1;
+      if (aLimited !== bLimited) return aLimited - bLimited;
       const volA = boxList[a].box.l * boxList[a].box.w * boxList[a].box.h;
       const volB = boxList[b].box.l * boxList[b].box.w * boxList[b].box.h;
       return volB - volA;
@@ -233,7 +237,8 @@ window.PackingEngine = (function() {
           boxIdx: bi,
           color: bc.box.color,
           name: bc.box.name,
-          rotated: isRotated
+          rotated: isRotated,
+          origL: bc.box.l, origW: bc.box.w, origH: bc.box.h
         });
         bc.placed++;
         keepGoing = true;
@@ -542,6 +547,9 @@ window.PackingEngine = (function() {
           p.boxIdx = 0;
           p.color = bc.box.color;
           p.name = bc.box.name;
+          p.origL = bc.box.l;
+          p.origW = bc.box.w;
+          p.origH = bc.box.h;
         });
         return {
           placed: singleResult.positions,
@@ -577,23 +585,44 @@ window.PackingEngine = (function() {
       }
     }
 
-    // 后续轮次：随机打乱顺序
+    // 后续轮次：随机打乱顺序（有数量限制的纸箱保持在前面）
     const boxIndices = boxConfigs.map((_, i) => i);
+    // 先按"有限量优先"排序
+    boxIndices.sort((a, b) => {
+      const aL = boxConfigs[a].qty !== null ? 0 : 1;
+      const bL = boxConfigs[b].qty !== null ? 0 : 1;
+      if (aL !== bL) return aL - bL;
+      return 0; // 同组内保持原序
+    });
+    // 找到分组边界
+    const splitIdx = boxIndices.findIndex(i => boxConfigs[i].qty === null);
+    const limitedPart = splitIdx > 0 ? boxIndices.slice(0, splitIdx) : (splitIdx === -1 ? boxIndices.slice() : []);
+    const unlimitedPart = splitIdx >= 0 ? boxIndices.slice(splitIdx) : [];
     for (let r = 1; r < rounds; r++) {
-      // Fisher-Yates 洗牌
-      const shuffled = [...boxIndices];
-      for (let i = shuffled.length - 1; i > 0; i--) {
+      // Fisher-Yates 洗牌（只在无限量组内打乱，有限量纸箱保持队首确保优先放置）
+      const shuffled = [...limitedPart];
+      const shuffledUnl = [...unlimitedPart];
+      for (let i = shuffledUnl.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        [shuffledUnl[i], shuffledUnl[j]] = [shuffledUnl[j], shuffledUnl[i]];
       }
+      shuffled.push(...shuffledUnl);
 
-      // 还需要按体积降序的变体：先打乱同体积段再试
-      const shuffledByVol = [...boxIndices].sort((a, b) => {
-        const volA = boxConfigs[a].box.l * boxConfigs[a].box.w * boxConfigs[a].box.h;
-        const volB = boxConfigs[b].box.l * boxConfigs[b].box.w * boxConfigs[b].box.h;
-        if (Math.abs(volA - volB) < 100) return Math.random() - 0.5;
-        return volB - volA;
-      });
+      // 还需要按体积降序的变体：有限量优先，同体积段随机化
+      const shuffledByVol = [
+        ...limitedPart.sort((a, b) => {
+          const volA = boxConfigs[a].box.l * boxConfigs[a].box.w * boxConfigs[a].box.h;
+          const volB = boxConfigs[b].box.l * boxConfigs[b].box.w * boxConfigs[b].box.h;
+          if (Math.abs(volA - volB) < 100) return Math.random() - 0.5;
+          return volB - volA;
+        }),
+        ...unlimitedPart.sort((a, b) => {
+          const volA = boxConfigs[a].box.l * boxConfigs[a].box.w * boxConfigs[a].box.h;
+          const volB = boxConfigs[b].box.l * boxConfigs[b].box.w * boxConfigs[b].box.h;
+          if (Math.abs(volA - volB) < 100) return Math.random() - 0.5;
+          return volB - volA;
+        })
+      ];
 
       const candidate = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, shuffledByVol);
       if (!candidate) continue;
@@ -619,6 +648,113 @@ window.PackingEngine = (function() {
     if (bestResult && bestResult.totalCount > 0) {
       var filled = fillGaps(bestResult, boxConfigs, crateL, crateW, crateH, gap, allowRotate);
       if (filled) bestResult = filled;
+    }
+
+    // 混装顶层填充：fillGaps 之后，对顶部剩余空间铺一层网格
+    if (bestResult && bestResult.totalCount > 0 && bestResult.placed && bestResult.placed.length > 0) {
+      var pl = bestResult.placed;
+      var cL2 = bestResult.crateL;
+      var cW2 = bestResult.crateW;
+      var cH2 = bestResult.crateH;
+      var g2 = bestResult.gap;
+
+      // 最高顶面
+      var maxTop = 0;
+      for (var pi3 = 0; pi3 < pl.length; pi3++) {
+        var tp = pl[pi3].z + pl[pi3].h;
+        if (tp > maxTop) maxTop = tp;
+      }
+
+      var remZ = (g2 + cH2) - maxTop;
+      if (remZ > 0) {
+        // 收集有剩余需求的纸箱
+        var dem2 = [];
+        for (var di3 = 0; di3 < boxConfigs.length; di3++) {
+          var bc3 = boxConfigs[di3];
+          var cnt3 = 0;
+          for (var pj3 = 0; pj3 < pl.length; pj3++) {
+            if (pl[pj3].boxIdx === di3) cnt3++;
+          }
+          var rem2 = bc3.qty === null ? Infinity : bc3.qty - cnt3;
+          if (rem2 > 0 || bc3.qty === null) {
+            dem2.push({ bc: bc3, idx: di3, remaining: bc3.qty === null ? Infinity : rem2 });
+          }
+        }
+
+        if (dem2.length > 0) {
+          // 体积降序
+          dem2.sort(function(a, b) {
+            var va = a.bc.box.l * a.bc.box.w * a.bc.box.h;
+            var vb = b.bc.box.l * b.bc.box.w * b.bc.box.h;
+            return vb - va;
+          });
+
+          for (var dk2 = 0; dk2 < dem2.length; dk2++) {
+            var demItem = dem2[dk2];
+            var bc4 = demItem.bc;
+            var keepUp = bc4.box.keepUpright === true;
+            var rots3 = getRotations(bc4.box.l, bc4.box.w, bc4.box.h, allowRotate, keepUp);
+
+            var bestN = 0, bestFill = null;
+            for (var ri3 = 0; ri3 < rots3.length; ri3++) {
+              var r3 = rots3[ri3];
+              var rl3 = r3[0], rw3 = r3[1], rh3 = r3[2];
+              if (rh3 > remZ || rl3 > cL2 || rw3 > cW2) continue;
+              var fx3 = Math.floor(cL2 / rl3);
+              var fy3 = Math.floor(cW2 / rw3);
+              var n3 = fx3 * fy3;
+              if (n3 > bestN) {
+                bestN = n3;
+                bestFill = { rl: rl3, rw: rw3, rh: rh3, fx: fx3, fy: fy3 };
+              }
+            }
+
+            if (bestFill && bestN > 0) {
+              var actual = Math.min(bestN, demItem.remaining);
+              if (actual > 0) {
+                var origD = [bc4.box.l, bc4.box.w, bc4.box.h];
+                var isRot = !(bestFill.rl === origD[0] && bestFill.rw === origD[1] && bestFill.rh === origD[2]);
+                var cnt4 = 0;
+                for (var x3 = 0; x3 < bestFill.fx && cnt4 < actual; x3++) {
+                  for (var y3 = 0; y3 < bestFill.fy && cnt4 < actual; y3++) {
+                    pl.push({
+                      x: g2 + x3 * bestFill.rl,
+                      y: g2 + y3 * bestFill.rw,
+                      z: maxTop,
+                      l: bestFill.rl, w: bestFill.rw, h: bestFill.rh,
+                      boxIdx: demItem.idx,
+                      color: bc4.box.color,
+                      name: bc4.box.name,
+                      rotated: isRot,
+                      origL: bc4.box.l, origW: bc4.box.w, origH: bc4.box.h
+                    });
+                    cnt4++;
+                  }
+                }
+
+                // 更新统计
+                bestResult.totalCount = pl.length;
+                var totalV = cL2 * cW2 * cH2;
+                var usedV = 0;
+                for (var pu2 = 0; pu2 < pl.length; pu2++) {
+                  usedV += pl[pu2].l * pl[pu2].w * pl[pu2].h;
+                }
+                bestResult.utilRate = usedV / totalV;
+                bestResult.breakdown = [];
+                for (var bk2 = 0; bk2 < boxConfigs.length; bk2++) {
+                  var cnt5 = 0;
+                  for (var pl3 = 0; pl3 < pl.length; pl3++) {
+                    if (pl[pl3].boxIdx === bk2) cnt5++;
+                  }
+                  bestResult.breakdown.push({ box: boxConfigs[bk2].box, count: cnt5, requested: boxConfigs[bk2].qty });
+                }
+                bestResult.hasRotation = pl.some(function(p) { return p.rotated; });
+              }
+              break; // 只填充一种纸箱类型
+            }
+          }
+        }
+      }
     }
 
     return bestResult;
@@ -705,7 +841,8 @@ window.PackingEngine = (function() {
                   boxIdx: dem.idx,
                   color: bc.box.color,
                   name: bc.box.name,
-                  rotated: isRot
+                  rotated: isRot,
+                  origL: bc.box.l, origW: bc.box.w, origH: bc.box.h
                 });
                 occupied.push({ x: x, y: y, z: z, x2: x + rl, y2: y + rw, z2: z + rh });
                 dem.remaining--;
