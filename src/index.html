@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>标准木箱装箱计算器</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div style="display:flex;align-items:center">
+    <h1>📦 标准木箱装箱计算器</h1>
+    <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline btn-sm" onclick="App.exportResult()">导出</button>
+    <button class="btn btn-sm" style="background:#f5f5f5;border:1px solid #d9d9d9;color:#666" onclick="App.clearAll()">重置</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- 左侧输入面板 -->
+  <div class="sidebar" id="sidebar-panel">
+    <button class="sidebar-close-btn" onclick="App.closeSidebar()">&times;</button>
+
+    <div class="sidebar-section">
+      <h3>计算模式</h3>
+      <div class="mode-switch">
+        <button class="mode-btn active" id="mode-btn-single" onclick="App.setMode('single')">📊 单品对比</button>
+        <button class="mode-btn" id="mode-btn-mixed" onclick="App.setMode('mixed')">🎲 混装模式</button>
+        <button class="mode-btn" id="mode-btn-reverse" onclick="App.setMode('reverse')">🔄 木箱反推</button>
+      </div>
+      <div id="mode-single-hint" class="mode-hint">每种纸箱各自独立计算最大装入量，对比哪种方案最优</div>
+      <div id="mode-mixed-hint" class="mode-hint" style="display:none">多种纸箱混放在同一木箱，可指定各种纸箱的需求数量（留空=尽量多），自动分配位置最大化利用率</div>
+      <div id="mode-reverse-hint" class="mode-hint" style="display:none">输入纸箱清单 + 标准木箱尺寸库 → 自动计算每种木箱需要几个，推荐最优方案</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>
+        木箱尺寸（内径）
+        <span class="section-action" style="display:flex;gap:4px">
+          <button class="btn btn-outline btn-sm" id="batch-mode-btn" onclick="App.toggleBatchMode()" title="开启批量模式，同时对比多种木箱">📋 批量</button>
+          <button class="btn btn-outline btn-sm" id="crate-add-btn" onclick="App.addCrateUI()" style="display:none">+ 添加木箱</button>
+        </span>
+      </h3>
+      <!-- 单木箱模式 -->
+      <div id="single-crate-area">
+        <div class="form-row">
+          <div class="field-group">
+            <label>长 L (mm)</label>
+            <input type="number" id="c-l" value="1200" min="1" placeholder="1200" oninput="App.updateCrateVol()">
+          </div>
+          <div class="field-group">
+            <label>宽 W (mm)</label>
+            <input type="number" id="c-w" value="1000" min="1" placeholder="1000" oninput="App.updateCrateVol()">
+          </div>
+          <div class="field-group">
+            <label>高 H (mm)</label>
+            <input type="number" id="c-h" value="800" min="1" placeholder="800" oninput="App.updateCrateVol()">
+          </div>
+        </div>
+        <div id="crate-vol-display" style="font-size:12px;color:#888;margin-top:4px"></div>
+        <div class="form-row two" style="margin-top:6px">
+          <div class="field-group">
+            <label>最大承重 (kg)</label>
+            <input type="number" id="c-max-weight" value="" min="0" placeholder="不限制" oninput="App.updateCrateVol()" step="0.1">
+          </div>
+        </div>
+      </div>
+      <!-- 多木箱模式 -->
+      <div id="multi-crate-area" style="display:none">
+        <div id="crate-list"></div>
+        <div id="crate-list-empty" style="color:#bbb;font-size:12px;text-align:center;padding:8px 0;display:none">点击"+ 添加木箱"增加木箱规格</div>
+        <div class="spec-actions-row" style="margin-top:8px">
+          <button class="btn-spec import-btn" onclick="App.batchImportCrates()" title="从规格库批量导入木箱尺寸">📥 批量导入</button>
+          <button class="btn-spec import-btn" onclick="App.showSpecManager('crate')" title="管理已保存的木箱尺寸">🗄️ 管理</button>
+        </div>
+      </div>
+      <div class="spec-actions-row" id="single-crate-actions">
+        <button class="btn-spec save-btn" onclick="App.saveCrateSpec()" title="将当前木箱尺寸保存到规格库">💾 保存尺寸</button>
+        <button class="btn-spec import-btn" onclick="App.showSpecManager('crate')" title="管理已保存的木箱尺寸">🗄️ 管理</button>
+      </div>
+      <!-- 反推模式：标准木箱库 -->
+      <div id="reverse-crate-area" style="display:none">
+        <div style="font-size:12px;color:#888;margin-bottom:6px">选择标准木箱尺寸，系统将自动计算每种木箱需要几个</div>
+        <div id="reverse-crate-list"></div>
+        <div style="margin-top:8px">
+          <button class="btn-spec import-btn" onclick="App.addReverseCrate()" title="手动添加标准木箱尺寸">+ 添加木箱尺寸</button>
+          <button class="btn-spec import-btn" onclick="App.batchImportReverseCrates()" title="从规格库批量导入">📥 从规格库导入</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>
+        纸箱尺寸
+        <span class="section-action" style="display:flex;gap:4px">
+          <button class="btn btn-outline btn-sm" onclick="App.showSpecManager('box')" title="管理已保存的纸箱尺寸">🗄️ 管理</button>
+          <button class="btn btn-outline btn-sm" onclick="App.addBox()">+ 添加</button>
+        </span>
+      </h3>
+      <div id="box-list"></div>
+      <div id="box-list-empty" style="color:#bbb;font-size:12px;text-align:center;padding:8px 0;display:none">点击"添加"增加纸箱</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>计算选项</h3>
+      <div class="form-row two">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:4px">
+            留边空隙 (mm)
+            <span class="tip-icon" data-tip="四周及上下各留出的缓冲距离，两侧对称扣除。&#10;适用场景：&#10;• 纸箱装货后膨胀鼓包（建议 10~20mm）&#10;• 内壁有泡沫/纸板衬材（按衬材厚度填）&#10;• 需要装卸操作余量（建议 10mm）&#10;&#10;不填（0）= 紧贴木箱内壁计算">?</span>
+          </label>
+          <input type="number" id="opt-gap" value="0" min="0" placeholder="建议 10~20">
+        </div>
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:4px">
+            层间间距 (mm)
+            <span class="tip-icon" data-tip="每层纸箱之间的垂直间距。&#10;适用场景：&#10;• 层与层之间有纸板隔层（按隔板厚度，如 5mm）&#10;• 有托板或缓冲垫（按垫子厚度填）&#10;&#10;无隔板 = 填 0&#10;普通纸板隔层 ≈ 3~5mm">?</span>
+          </label>
+          <input type="number" id="opt-layer-gap" value="0" min="0" placeholder="无隔板填 0">
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="opt-rotate" checked style="cursor:pointer">
+        <label for="opt-rotate" style="font-size:13px;cursor:pointer;color:#444">允许旋转优化（自动尝试6种方向）</label>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px" id="strategy-row">
+        <label style="font-size:12px;color:#888;white-space:nowrap">优化策略</label>
+        <div class="mode-switch" style="flex:1">
+          <button class="mode-btn active" id="strategy-btn-count" onclick="App.setStrategy('count')">📊 数量优先</button>
+          <button class="mode-btn" id="strategy-btn-util" onclick="App.setStrategy('util')">📐 空间优先</button>
+        </div>
+        <span class="tip-icon" data-tip="数量优先：装入尽可能多的纸箱，适合发货最大化。&#10;空间优先：优先填满木箱空间，适合运费按体积计算。&#10;&#10;空间优先模式下，小纸箱不会无限填充，&#10;而是追求更高的空间利用率。">?</span>
+      </div>
+      <div style="margin-top:6px;display:flex;align-items:center;gap:8px" id="retry-row">
+        <label for="opt-retry" style="font-size:12px;color:#888;white-space:nowrap">混装重试次数</label>
+        <input type="number" id="opt-retry" value="10" min="1" max="50" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:3px 6px;font-size:12px;text-align:center">
+        <span class="tip-icon" data-tip="混装算法使用贪心策略，结果受纸箱排列顺序影响。&#10;增加重试次数会随机打乱顺序多次计算，&#10;取最优结果。&#10;建议 5~20 次，越多越可能找到更优解，&#10;但计算时间会相应增加。">?</span>
+      </div>
+    </div>
+
+    <div class="calc-btn-area">
+      <div id="calc-error" style="display:none"></div>
+      <button class="btn btn-primary" onclick="App.calculate()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+        开始计算
+      </button>
+    </div>
+  </div>
+
+  <!-- 右侧主区域 -->
+  <div class="main-view">
+    <div class="tabs" id="desktop-tabs">
+      <div class="tab active" data-tab="results" onclick="App.switchTab('results')">计算结果</div>
+      <div class="tab" data-tab="visual" onclick="App.switchTab('visual')">3D 可视化</div>
+      <div class="tab" data-tab="history" onclick="App.switchTab('history')">历史记录</div>
+    </div>
+
+    <div class="view-content">
+      <div class="view-panel active" id="panel-results">
+        <div id="results-content">
+          <div class="no-result">
+            <div class="nr-icon">📐</div>
+            <h3>等待计算</h3>
+            <p>在左侧填写木箱和纸箱尺寸，点击"开始计算"</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-panel three-panel" id="panel-visual">
+        <div id="three-canvas-wrap">
+          <div class="canvas-overlay" id="canvas-info">
+            <div>旋转: 拖动</div>
+            <div>缩放: 双指/滚轮</div>
+          </div>
+          <div id="legend-overlay" class="legend-overlay" style="display:none"></div>
+          <div class="box-hover-tooltip" id="box-hover-tooltip"></div>
+          <div class="canvas-hint">拖动旋转 · 双指缩放</div>
+        </div>
+        <div class="three-controls">
+          <div class="scheme-tabs" id="scheme-tabs">
+            <span style="font-size:12px;color:#bbb">请先计算</span>
+          </div>
+          <div class="view-btns">
+            <button class="view-btn" onclick="App.resetCamera()">重置视角</button>
+            <button class="view-btn" onclick="App.toggleWireframe()">线框</button>
+            <button class="view-btn" id="btn-crate-vis" onclick="App.toggleCrateVis()">木箱</button>
+            <button class="view-btn" id="btn-crate-dashed" onclick="App.toggleCrateDashed()">虚线</button>
+            <button class="view-btn" id="btn-orientation" onclick="App.toggleOrientationMarkers()">方向标</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-panel" id="panel-history">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h3 style="font-size:14px;font-weight:600;color:#333">历史计算记录</h3>
+          <button class="btn btn-sm btn-danger" onclick="App.clearHistoryConfirm()">清空历史</button>
+        </div>
+        <div id="history-list-content"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 移动端底部 Tab -->
+<div class="mobile-tab-bar" id="mobile-tab-bar">
+  <button class="mtab" onclick="App.openSidebar()"><span class="mtab-icon">⚙️</span>参数</button>
+  <button class="mtab active" data-mtab="results" onclick="App.switchTab('results')"><span class="mtab-icon">📊</span>结果</button>
+  <button class="mtab" data-mtab="visual" onclick="App.switchTab('visual')"><span class="mtab-icon">🎮</span>3D</button>
+  <button class="mtab" data-mtab="history" onclick="App.switchTab('history')"><span class="mtab-icon">🕰️</span>历史</button>
+</div>
+
+<script src="lib/three.min.js"></script>
+
+<!-- 模块加载顺序：严格按依赖关系 -->
+<script src="js/app-state.js"></script>
+<script src="js/packing-engine.js"></script>
+<script src="js/storage-manager.js"></script>
+<script src="js/visualizer-3d.js"></script>
+<script src="js/ui-renderer.js"></script>
+<script src="js/app.js"></script>
+
+<!-- ============================================================
+     提示气泡（独立于模块系统）
+     ============================================================ -->
+<script>
+(function() {
+  'use strict';
+  let tipOverlay = null;
+  function ensureTipOverlay() {
+    if (!tipOverlay) {
+      tipOverlay = document.createElement('div');
+      tipOverlay.className = 'tip-overlay';
+      document.body.appendChild(tipOverlay);
+    }
+    return tipOverlay;
+  }
+  document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('.tip-icon');
+    if (!icon) return;
+    const tip = icon.dataset.tip;
+    if (!tip) return;
+    const overlay = ensureTipOverlay();
+    const lines = tip.split('\n');
+    overlay.innerHTML = '';
+    let plainMode = true;
+    for (const line of lines) {
+      if (line.startsWith('适用场景：')) {
+        const div = document.createElement('div');
+        div.className = 'tip-head';
+        div.textContent = line;
+        overlay.appendChild(div);
+        plainMode = false;
+      } else if (!plainMode) {
+        const div = document.createElement('div');
+        div.className = 'tip-row';
+        div.textContent = line;
+        overlay.appendChild(div);
+      } else {
+        const div = document.createElement('div');
+        div.style.color = '#e0e0e0';
+        div.textContent = line;
+        overlay.appendChild(div);
+      }
+    }
+    const rect = icon.getBoundingClientRect();
+    overlay.style.left = Math.min(rect.right + 8, window.innerWidth - 280) + 'px';
+    overlay.style.top = rect.top + 'px';
+    overlay.classList.add('show');
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (!e.target.closest('.tip-icon')) return;
+    const overlay = ensureTipOverlay();
+    overlay.classList.remove('show');
+  });
+})();
+</script>
+
+<!-- ============================================================
+     启动应用
+     ============================================================ -->
+<script>
+window.addEventListener('load', function() {
+  if (typeof App !== 'undefined' && App && App.init) {
+    App._initialized = true;
+    App.init();
+  } else {
+    console.error('[启动] App 模块未定义，无法初始化。请检查控制台是否有其他错误。');
+  }
+});
+
+// 备用：如果 load 事件因为某些原因未触发，在 DOMContentLoaded 后延迟初始化
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() {
+    if (typeof App !== 'undefined' && App && App.init) {
+      if (!App._initialized) {
+        App._initialized = true;
+        console.log('[启动] DOMContentLoaded 备用初始化');
+        App.init();
+      }
+    }
+  }, 2000);
+});
+</script>
+
+<!-- ====== 规格管理弹窗 ====== -->
+<div class="modal-overlay" id="spec-manager-modal" style="display:none" onclick="App.closeSpecManager(event)">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🗄️ 规格管理</h2>
+      <button class="modal-close" onclick="App.closeSpecManager()">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="modal-tab-box" onclick="App.switchSpecTab('box')">📦 纸箱规格</button>
+      <button class="modal-tab" id="modal-tab-crate" onclick="App.switchSpecTab('crate')">📐 木箱尺寸</button>
+    </div>
+    <div class="modal-body" id="spec-manager-body"></div>
+  </div>
+</div>
+
+<!-- 移动端侧边栏遮罩 -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
+
+</body>
+</html>

@@ -1,8 +1,21 @@
 {
+  "name": "box-calculator",
+  "version": "2.0.0",
+  "description": "标准木箱装箱计算器 - 单品对比/混装/木箱反推",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve src/ -l 3000",
+    "build": "node build.js",
+    "preview": "npx serve dist/ -l 3000",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
   "devDependencies": {
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
-    "playwright": "^1.60.0"
+    "three": "^0.152.2"
   }
 }
