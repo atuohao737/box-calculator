@@ -967,5 +967,5 @@ window.PackingEngine = (function() {
     return results;
   }
 
-  return { getRotations, calcPacking, calcMixedPacking, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps };
+  return { getRotations, calcPacking, calcMixedPacking, calcMixedPackingOnce, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps };
 })();
