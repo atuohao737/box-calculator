@@ -722,7 +722,11 @@ window.App = (function() {
             if (S.currentMode === 'mixed' && br.mixResult) {
               V3.renderMixedScene(br.mixResult);
             } else if (br.calcResults.length > 0) {
-              V3.renderSingleScene(br.calcResults[0]);
+              // 单品模式下取装箱数最多的纸箱方案渲染3D
+              var bestCr = br.calcResults.reduce(function(a, b) {
+                return (a.result && a.result.count) > (b.result && b.result.count) ? a : b;
+              });
+              V3.renderSingleScene(bestCr);
             }
           }
         } else if (S.currentMode === 'single' && S.calcResults.length > 0) {
