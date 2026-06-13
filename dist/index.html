@@ -2753,7 +2753,11 @@ window.UIRenderer = (function() {
       if (br._bestUtil) bestBadges += '<span class="batch-best-badge" style="background:#52c41a">⭐ 最佳利用率</span>';
       if (br._bestCount) bestBadges += '<span class="batch-best-badge" style="background:#1677ff">📊 最多数量</span>';
 
-      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="App.selectBatchCrate(' + origIdx + ')">';
+      // 混装模式卡片点击进入3D视图；单品模式只有各行纸箱的3D按钮可进入
+      var cardOnClick = s.currentMode === 'mixed'
+        ? 'App.selectBatchCrate(' + origIdx + ', true)'
+        : 'App.selectBatchCrate(' + origIdx + ')';
+      html += '<div class="result-card" style="cursor:pointer;border:2px solid ' + crateHeaderBorder + '" onclick="' + cardOnClick + '">';
       html += '<div class="result-card-header" style="background:' + crateHeaderBg + '">';
       html += '<div class="rc-title">📦 ' + escapeHtml(br.crate.name) + '</div>';
       html += '<div style="font-size:12px;color:#888">' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm</div>';
