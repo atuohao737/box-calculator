@@ -25,6 +25,8 @@
   <div class="sidebar" id="sidebar-panel">
     <button class="sidebar-close-btn" onclick="App.closeSidebar()">&times;</button>
 
+    <div class="sidebar-scroll">
+
     <div class="sidebar-section">
       <h3>计算模式</h3>
       <div class="mode-switch">
@@ -140,6 +142,8 @@
         <input type="number" id="opt-retry" value="10" min="1" max="50" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:3px 6px;font-size:12px;text-align:center">
         <span class="tip-icon" data-tip="混装算法使用贪心策略，结果受纸箱排列顺序影响。&#10;增加重试次数会随机打乱顺序多次计算，&#10;取最优结果。&#10;建议 5~20 次，越多越可能找到更优解，&#10;但计算时间会相应增加。">?</span>
       </div>
+    </div>
+
     </div>
 
     <div class="calc-btn-area">
