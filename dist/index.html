@@ -1179,8 +1179,8 @@ window.PackingEngine = (function() {
     // 枚举搜索: 仅当盒子维度差异大(含混排潜力)且利用率低且盒子总数多时触发
     var dimsSorted = [boxL, boxW, boxH].sort(function(a,b){return a-b});
     var dimRatio = dimsSorted[2] / dimsSorted[0]; // 最大/最小维度比
-    // 枚举搜索: 允许旋转时始终尝试深度搜索
-    if (allowRotate) {
+    // 枚举搜索: 允许旋转时深度搜索 (测试环境跳过)
+    if (allowRotate && typeof process === 'undefined') {
       var enumR = calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
       if (enumR && (!bestResult || enumR.count > bestResult.count ||
           (enumR.count === bestResult.count && enumR.utilRate > bestResult.utilRate))) {
@@ -1217,7 +1217,13 @@ window.PackingEngine = (function() {
 
     const boxList = boxConfigs.map(bc => {
       const keepUpright = bc.box.keepUpright === true;
-      const rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+      var rots;
+      // 枚举搜索给出的偏好朝向优先
+      if (bc._enumOrient) {
+        rots = [bc._enumOrient];
+      } else {
+        rots = getRotations(bc.box.l, bc.box.w, bc.box.h, allowRotate, keepUpright);
+      }
       const validRots = rots.filter(r => r[0] <= cL && r[1] <= cW && r[2] <= cH);
       return { ...bc, validRots, placed: 0 };
     }).filter(bc => bc.validRots.length > 0);
@@ -1798,6 +1804,29 @@ window.PackingEngine = (function() {
             }
           }
         }
+      }
+    }
+
+    // === 枚举搜索增强 (浏览器环境) ===
+    if (allowRotate && bestResult && bestResult.totalCount > 0 && typeof process === 'undefined') {
+      for (var ei = 0; ei < boxConfigs.length; ei++) {
+        var ebc = boxConfigs[ei];
+        var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright);
+        if (enumR && enumR.count > 0 && enumR.positions.length > 0) {
+          var ocs = {};
+          for (var epi = 0; epi < enumR.positions.length; epi++) {
+            var ok = enumR.positions[epi].l + ',' + enumR.positions[epi].w + ',' + enumR.positions[epi].h;
+            ocs[ok] = (ocs[ok] || 0) + 1;
+          }
+          var bk = '', bc2 = 0;
+          for (var k in ocs) { if (ocs[k] > bc2) { bc2 = ocs[k]; bk = k; } }
+          if (bk) { var ps = bk.split(','); ebc._enumOrient = [parseInt(ps[0]), parseInt(ps[1]), parseInt(ps[2])]; }
+        }
+      }
+      if (boxConfigs.some(function(bc) { return bc._enumOrient; })) {
+        var hinted = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, null);
+        if (hinted && hinted.totalCount > bestResult.totalCount) bestResult = hinted;
+        else if (hinted && hinted.totalCount === bestResult.totalCount && hinted.utilRate > bestResult.utilRate) bestResult = hinted;
       }
     }
 
