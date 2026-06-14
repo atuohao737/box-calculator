@@ -16,6 +16,227 @@ window.PackingEngine = (function() {
     });
   }
 
+  // EnumSearch: 2D层搜索 + 3D堆叠
+  function generateCoords(maxVal, dims) {
+    const set = new Set([0]), q = [0];
+    while (q.length) { const cur = q.shift(); for (const d of dims) { const n = cur + d; if (n <= maxVal && !set.has(n)) { set.add(n); q.push(n); } } }
+    return Array.from(set).sort((a, b) => a - b);
+  }
+  function calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright) {
+    var cL = crateL - gap * 2, cW = crateW - gap * 2, cH = crateH - gap * 2;
+    if (cL <= 0 || cW <= 0 || cH <= 0) return null;
+    var rots = getRotations(boxL, boxW, boxH, allowRotate, keepUpright);
+    var allDims = [boxL, boxW, boxH].filter(function(v,i,a){return a.indexOf(v)===i}).sort(function(a,b){return a-b});
+    var xsAll = generateCoords(cL, allDims), ysAll = generateCoords(cW, allDims);
+    function ov2(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+    function greedy2D(arr){var r=[];for(var ai=0;ai<arr.length;ai++){var p=arr[ai],ok=1;for(var qi=0;qi<r.length;qi++)if(ov2(p,r[qi])){ok=0;break}if(ok)r.push(p)}return r}
+    var bestPlan = null;
+    for (var ri = 0; ri < rots.length; ri++) {
+      var bl = rots[ri][0], bw = rots[ri][1], bh = rots[ri][2];
+      if (bl > cL || bw > cW || bh > cH) continue;
+      var zc = 0, ha = 0;
+      while (ha + bh <= cH) { zc++; ha += bh; }
+      // 用此旋转的平面尺寸生成坐标 (更快更准)
+      var rDims = [bl, bw].filter(function(v,i,a){return a.indexOf(v)===i}).sort(function(a,b){return a-b});
+      var xsR = generateCoords(cL, rDims), ysR = generateCoords(cW, rDims);
+      var cands2D = [];
+      for (var oi = 0; oi < 2; oi++) {
+        var pw = oi===0 ? bl : bw, pd = oi===0 ? bw : bl;
+        if (oi===1 && pw===bl && pd===bw) continue;
+        for (var xi = 0; xi < xsR.length; xi++) { var x = xsR[xi]; if (x+pw>cL) break;
+          for (var yi = 0; yi < ysR.length; yi++) { var y = ysR[yi]; if (y+pd>cW) break;
+            cands2D.push({x:x, y:y, w:pw, h:pd}); } } }
+      if (!cands2D.length) continue;
+      var best2D = greedy2D(cands2D.slice().sort(function(a,b){return(a.y-b.y)||(a.x-b.x)}));
+      var t0 = Date.now(), tMax = zc >= 3 ? 1000 : 15000, stall = 0;
+      while (Date.now()-t0 < tMax) {
+        var arr = cands2D.slice().sort(function(){return Math.random()-0.5});
+        var cand = greedy2D(arr);
+        if (cand.length > best2D.length) { best2D = cand; stall = 0; }
+        else { stall++; if (stall > 500000) break; }
+      }
+      var per = best2D.length;
+      // 估算总盒子数 = 层内 + Z顶填充
+      var usedH2 = zc * bh, remZ2 = cH - usedH2, topFillEst = 0;
+      if (remZ2 > 0) {
+        for (var rk = 0; rk < rots.length; rk++) {
+          var rl3 = rots[rk][0], rw3 = rots[rk][1], rh3 = rots[rk][2];
+          if (rh3 <= remZ2 && rl3 <= cL && rw3 <= cW) {
+            topFillEst = Math.floor(cL / rl3) * Math.floor(cW / rw3);
+            break;
+          }
+        }
+      }
+      var total = per * zc + topFillEst;
+      if (!bestPlan || total > bestPlan.total) bestPlan = { cells: best2D, bl: bl, bw: bw, bh: bh, zc: zc, total: total, per: per };
+    }
+    if (!bestPlan || bestPlan.total <= 0) return null;
+    var positions = [];
+    for (var z2 = 0; z2 < bestPlan.zc; z2++) {
+      var zo = gap + z2 * bestPlan.bh;
+      for (var ci = 0; ci < bestPlan.cells.length; ci++) {
+        var c = bestPlan.cells[ci];
+        positions.push({ x: gap+c.x, y: gap+c.y, z: zo, l: c.w, w: c.h, h: bestPlan.bh,
+          rotated: !(c.w===boxL && c.h===boxW && bestPlan.bh===boxH) });
+      }
+    }
+    var usedH = bestPlan.zc * bestPlan.bh, remZ = cH - usedH;
+    if (remZ > 0) {
+      for (var rj = 0; rj < rots.length; rj++) {
+        var rl2 = rots[rj][0], rw2 = rots[rj][1], rh2 = rots[rj][2];
+        if (rh2 > remZ || rl2 > cL || rw2 > cW) continue;
+        var fx2 = Math.floor(cL / rl2), fy2 = Math.floor(cW / rw2), zo2 = gap + usedH;
+        for (var x2 = 0; x2 < fx2; x2++) for (var y2 = 0; y2 < fy2; y2++)
+          positions.push({ x: gap+x2*rl2, y: gap+y2*rw2, z: zo2, l: rl2, w: rw2, h: rh2,
+            rotated: !(rl2===boxL && rw2===boxW && rh2===boxH) });
+        break;
+      }
+    }
+    var uv = 0; for (var pi = 0; pi < positions.length; pi++) uv += positions[pi].l*positions[pi].w*positions[pi].h;
+    return { count: positions.length, xCount:0, yCount:0, zCount:0, bL:boxL, bW:boxW, bH:boxH,
+      utilRate: uv/(cL*cW*cH), positions: positions, isRotated: positions.some(function(p){return p.rotated}),
+      origL: boxL, origW: boxW, origH: boxH };
+  }
+
+  // ============================================================
+  // DSAP: Dual-Size Alternating Partition — 双尺寸交错分区算法
+  // 基于师傅摆法提炼：选2个维度做平面排布，求最优整数组合逼近
+  // ============================================================
+
+  // bestSumApprox: 在不超过 target 的前提下，找 d1,d2 的非负整数组合
+  // 使 d1个数 + d2个数 (即格子数) 最大。返回 { segments, total, count }
+  function bestSumApprox(target, d1, d2) {
+    let bestCount = 0, bestA = 0, bestB = 0, bestSum = 0;
+    const maxA = Math.floor(target / d1);
+    for (let a = 0; a <= maxA; a++) {
+      const remaining = target - a * d1;
+      const b = Math.floor(remaining / d2);
+      const total = a * d1 + b * d2;
+      const count = a + b;
+      if (count > bestCount || (count === bestCount && total > bestSum)) {
+        bestCount = count; bestA = a; bestB = b; bestSum = total;
+      }
+    }
+    // 也试试先放 d2 (即交换 d1/d2 的角色)
+    const maxB = Math.floor(target / d1); // d1 is the "larger" here but we treat symmetrically
+    for (let b = 0; b <= maxB; b++) {
+      const remaining = target - b * d1;
+      const a = Math.floor(remaining / d2);
+      const total = b * d1 + a * d2;
+      const count = a + b;
+      if (count > bestCount || (count === bestCount && total > bestSum)) {
+        bestCount = count; bestA = a; bestB = b; bestSum = total;
+        // Note: here a uses d2, b uses d1 (roles swapped)
+        // We'll normalize below
+      }
+    }
+    // Build segment array: bestA copies of d1, then bestB copies of d2
+    const segments = [];
+    for (let i = 0; i < bestA; i++) segments.push(d1);
+    for (let i = 0; i < bestB; i++) segments.push(d2);
+    return { segments, total: bestSum, count: bestCount, a: bestA, b: bestB };
+  }
+
+  // canFitCell: 检查宽w、深h的格子能否容纳平面尺寸为{d1,d2}的纸箱
+  // 纸箱两种朝向: (d1,d2) 或 (d2,d1)，任一朝向 ≤ 格子尺寸即有效
+  function canFitCell(cellW, cellH, d1, d2) {
+    return (d1 <= cellW && d2 <= cellH) || (d2 <= cellW && d1 <= cellH);
+  }
+
+  // buildDSAPGrid: 基于X+Y分段构建完整网格，验证每格有效性
+  // 返回 { cells, validCount, totalCells }
+  function buildDSAPGrid(xSegments, ySegments, d1, d2) {
+    const cells = [];
+    let xOff = 0, validCount = 0;
+    for (let i = 0; i < xSegments.length; i++) {
+      const cw = xSegments[i];
+      let yOff = 0;
+      for (let j = 0; j < ySegments.length; j++) {
+        const ch = ySegments[j];
+        const valid = canFitCell(cw, ch, d1, d2);
+        cells.push({ x: xOff, y: yOff, cellW: cw, cellH: ch, valid });
+        if (valid) validCount++;
+        yOff += ch;
+      }
+      xOff += cw;
+    }
+    return { cells, validCount, totalCells: cells.length };
+  }
+
+  // calcDSAPLayer: 计算单个平面层的DSAP排布
+  // 输入: cL,cW为容器平面尺寸(已扣gap), bL,bW,bH为纸箱尺寸
+  // 返回最优的层排布方案，或null
+  function calcDSAPLayer(cL, cW, bL, bW, bH, keepUpright) {
+    // 收集可用的平面维度子集 (选2个做平面，第3个做层高)
+    const dims = [bL, bW, bH];
+    let subsets = [];
+
+    if (keepUpright) {
+      // 直立模式: 高度必须是 bH，平面用 {bL, bW}
+      subsets = [{ plane: [Math.max(bL, bW), Math.min(bL, bW)], height: bH }];
+    } else {
+      // 自由旋转: 枚举3种高度选择
+      // 高度=bH, 平面={bL,bW}  → 排序 plane = [max(bL,bW), min(bL,bW)]
+      subsets.push({ plane: [Math.max(bL, bW), Math.min(bL, bW)], height: bH });
+      // 高度=bW, 平面={bL,bH}
+      subsets.push({ plane: [Math.max(bL, bH), Math.min(bL, bH)], height: bW });
+      // 高度=bL, 平面={bW,bH}
+      subsets.push({ plane: [Math.max(bW, bH), Math.min(bW, bH)], height: bL });
+      // 去重 (plane 数组排序后比较)
+      subsets = subsets.filter((s, i, arr) => {
+        const key = s.plane[0] + ',' + s.plane[1] + ',' + s.height;
+        return arr.findIndex(x => (x.plane[0] + ',' + x.plane[1] + ',' + x.height) === key) === i;
+      });
+    }
+
+    let bestResult = null;
+
+    for (const subset of subsets) {
+      const d1 = subset.plane[0]; // 较大尺寸
+      const d2 = subset.plane[1]; // 较小尺寸
+      const layerH = subset.height;
+
+      if (d1 > cL && d1 > cW) continue; // 最大平面尺寸超过两轴就跳过
+
+      // X轴最优分段
+      const xPart = bestSumApprox(cL, d1, d2);
+      // Y轴最优分段
+      const yPart = bestSumApprox(cW, d1, d2);
+
+      if (xPart.count === 0 || yPart.count === 0) continue;
+
+      // 策略A: 同相位 (X=[d1..., d2...], Y=[d1..., d2...])
+      const gridA = buildDSAPGrid(xPart.segments, yPart.segments, d1, d2);
+
+      // 策略B: 反相位 (X=[d1..., d2...], Y=[d2..., d1...])
+      const yAnti = [];
+      for (let i = 0; i < yPart.b; i++) yAnti.push(d2);
+      for (let i = 0; i < yPart.a; i++) yAnti.push(d1);
+      const gridB = buildDSAPGrid(xPart.segments, yAnti, d1, d2);
+
+      // 用两个Y排列中有效数更大的结果
+      const grid = gridA.validCount >= gridB.validCount ? gridA : gridB;
+
+      if (!bestResult || grid.validCount > bestResult.validCount ||
+          (grid.validCount === bestResult.validCount &&
+           (xPart.total + yPart.total) > (bestResult.xTotal + bestResult.yTotal))) {
+        bestResult = {
+          ...grid,
+          layerHeight: layerH,
+          dimSubset: subset.plane,
+          xSegments: xPart.segments,
+          ySegments: xPart.segments === (grid === gridA ? yPart.segments : yAnti) ? (grid === gridA ? yPart.segments : yAnti) : yPart.segments,
+          // 修正: 记录实际使用的Y分段
+          xTotal: xPart.total,
+          yTotal: grid === gridA ? yPart.total : (yPart.b * d2 + yPart.a * d1),
+          d1, d2
+        };
+      }
+    }
+
+    return bestResult;
+  }
+
   function calcPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, layerGap, allowRotate, keepUpright) {
     const cL = crateL - gap * 2;
     const cW = crateW - gap * 2;
@@ -47,15 +268,70 @@ window.PackingEngine = (function() {
         return zz;
       };
 
-      for (let z = 0; z < zCount; z++) {
-        const zh = zhAtLevel(z);
-        for (let x = 0; x < xCount; x++) {
-          for (let y = 0; y < yCount; y++) {
-            positions.push({ x: gap + x * bL, y: gap + y * bW, z: zh, l: bL, w: bW, h: bH, rotated: false });
+      // 基础网格放置 -> positions
+      let dsapUsed = false;
+      let dsapLayerHeight = bH;
+
+      // DSAP: 双尺寸交错分区 —— 仅在允许旋转时尝试
+      if (allowRotate && zCount > 0) {
+        const dsapResult = calcDSAPLayer(cL, cW, bL, bW, bH, keepUpright);
+        if (dsapResult && dsapResult.validCount > xCount * yCount) {
+          // DSAP 每层能放更多盒子，使用 DSAP 布局替代纯网格
+          dsapUsed = true;
+          dsapLayerHeight = dsapResult.layerHeight;
+          const dsapPerLayer = dsapResult.validCount;
+
+          // 用 DSAP 的层高重算 zCount
+          if (dsapLayerHeight !== bH) {
+            zCount = 0; h = 0;
+            while (h + dsapLayerHeight <= cH) {
+              zCount++;
+              h += dsapLayerHeight;
+              if (zCount > 1 && layerGap > 0 && h + layerGap <= cH) h += layerGap;
+            }
+          }
+
+          // 重建 DSAP 的 z 高度计算函数
+          const dsapZhAtLevel = (z) => {
+            let zz = gap;
+            for (let i = 0; i < z; i++) {
+              zz += dsapLayerHeight;
+              if (i < zCount - 1 && layerGap > 0 && zz + layerGap + dsapLayerHeight <= gap + cH) zz += layerGap;
+            }
+            return zz;
+          };
+
+          // 用 DSAP 有效格子填充各层
+          positions.length = 0;
+          for (let z = 0; z < zCount; z++) {
+            const zh = dsapZhAtLevel(z);
+            for (const cell of dsapResult.cells) {
+              if (!cell.valid) continue;
+              positions.push({
+                x: gap + cell.x, y: gap + cell.y, z: zh,
+                l: dsapResult.d1, w: dsapResult.d2, h: dsapLayerHeight,
+                rotated: !(dsapResult.d1 === boxL && dsapResult.d2 === boxW && dsapLayerHeight === boxH)
+              });
+            }
+          }
+          totalCount = positions.length;
+        }
+      }
+
+      if (!dsapUsed) {
+        // 纯网格放置
+        for (let z = 0; z < zCount; z++) {
+          const zh = zhAtLevel(z);
+          for (let x = 0; x < xCount; x++) {
+            for (let y = 0; y < yCount; y++) {
+              positions.push({ x: gap + x * bL, y: gap + y * bW, z: zh, l: bL, w: bW, h: bH, rotated: false });
+            }
           }
         }
       }
 
+      // DSAP 模式或枚举搜索跳过尾部填充
+      if (!dsapUsed) {
       // X轴尾余填充（在X方向剩余空间内填充，Y方向占用整个宽度）
       const remX = cL - xCount * bL;
       if (remX > 0 && zCount > 0) {
@@ -107,8 +383,12 @@ window.PackingEngine = (function() {
         }
       }
 
-      // Z轴顶层填充（在顶部剩余高度内再排一层）
-      const usedH = zCount * bH + (zCount > 1 ? (zCount - 1) * layerGap : 0);
+      } // end if (!dsapUsed) — DSAP模式下跳过X/Y尾余填充
+
+      // Z轴顶层填充（在顶部剩余高度内再排一层，DSAP和纯网格共用）
+      const usedH = dsapUsed
+        ? zCount * dsapLayerHeight + (zCount > 1 ? (zCount - 1) * layerGap : 0)
+        : zCount * bH + (zCount > 1 ? (zCount - 1) * layerGap : 0);
       const remZ = cH - usedH;
       if (remZ > 0 && zCount > 0) {
         let zFillBest = { count: 0 };
@@ -141,6 +421,17 @@ window.PackingEngine = (function() {
           isRotated: !(bL === boxL && bW === boxW && bH === boxH) || positions.some(p => p.rotated),
           origL: boxL, origW: boxW, origH: boxH
         };
+      }
+    }
+    // 枚举搜索: 仅当盒子维度差异大(含混排潜力)且利用率低且盒子总数多时触发
+    var dimsSorted = [boxL, boxW, boxH].sort(function(a,b){return a-b});
+    var dimRatio = dimsSorted[2] / dimsSorted[0]; // 最大/最小维度比
+    // 枚举搜索: 允许旋转时始终尝试深度搜索
+    if (allowRotate) {
+      var enumR = calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
+      if (enumR && (!bestResult || enumR.count > bestResult.count ||
+          (enumR.count === bestResult.count && enumR.utilRate > bestResult.utilRate))) {
+        bestResult = enumR;
       }
     }
     return bestResult;
@@ -1131,5 +1422,5 @@ window.PackingEngine = (function() {
     return results;
   }
 
-  return { getRotations, calcPacking, calcMixedPacking, calcMixedPackingOnce, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps };
+  return { getRotations, calcPacking, calcMixedPacking, calcMixedPackingOnce, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps, calcDSAPLayer, bestSumApprox, canFitCell, buildDSAPGrid, calcEnumPacking };
 })();

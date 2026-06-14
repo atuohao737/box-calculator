@@ -352,8 +352,8 @@ window.App = (function() {
     if (overlay) overlay.classList.add('show');
     if (title) title.textContent = '正在计算...';
     if (sub) sub.textContent = subText || '请稍候';
-    if (bar) bar.style.width = '0%';
-    if (timeEl) timeEl.textContent = '0.0s';
+    if (bar) { bar.style.width = '0%'; bar.classList.add('idle'); }
+    if (timeEl) timeEl.textContent = '计算中...';
     _calcStartTime = Date.now();
     _calcTimerInterval = setInterval(function() {
       var elapsed = ((Date.now() - _calcStartTime) / 1000).toFixed(1);
@@ -366,13 +366,23 @@ window.App = (function() {
     var bar = document.getElementById('calc-progress-bar');
     var pct = total > 0 ? Math.round((current / total) * 100) : 0;
     if (sub) sub.textContent = subText || '';
-    if (bar) bar.style.width = pct + '%';
+    if (bar) { bar.style.width = pct + '%'; bar.classList.remove('idle'); }
   }
 
   function hideCalcProgress() {
+    // 计算结束前显示实际总耗时
+    var timeEl = document.getElementById('calc-progress-time');
+    if (timeEl && _calcStartTime) {
+      var elapsed = ((Date.now() - _calcStartTime) / 1000).toFixed(1);
+      timeEl.textContent = '耗时 ' + elapsed + 's';
+    }
+    var bar = document.getElementById('calc-progress-bar');
+    if (bar) { bar.style.width = '100%'; bar.classList.remove('idle'); }
     _calcCancelled = false;
-    var overlay = document.getElementById('calc-overlay');
-    if (overlay) overlay.classList.remove('show');
+    setTimeout(function() {
+      var overlay = document.getElementById('calc-overlay');
+      if (overlay) overlay.classList.remove('show');
+    }, 600);
     if (_calcTimerInterval) { clearInterval(_calcTimerInterval); _calcTimerInterval = null; }
   }
 

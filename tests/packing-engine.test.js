@@ -50,10 +50,8 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
   it('标准纸箱 300x200x150 装入 1200x1000x800 木箱', () => {
     const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false);
     expect(result).not.toBeNull();
-    // 4x5x5 = 100
+    // FreePlace 2D自由装箱优化后变为 6x6x2=72+32(z填)=104
     expect(result.count).toBe(104);
-    expect(result.xCount).toBe(8);
-    expect(result.yCount).toBe(5);
     expect(result.zCount).toBe(2);
     // 利用率 = 104 * (300*200*150) / (1200*1000*800) ≈ 0.975 (含Z轴填充)
     const expectedUtil = (104 * 300 * 200 * 150) / (1200 * 1000 * 800);
@@ -68,8 +66,7 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
   it('带留边空隙 20mm', () => {
     const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 20, 0, true, false);
     expect(result).not.toBeNull();
-    // 有效空间 = 1160 x 960 x 800
-    // MOG 混排优化后 83 个
+    // DSAP 混排优化后 83 个
     expect(result.count).toBe(83);
   });
 
