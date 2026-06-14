@@ -69,7 +69,7 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
     const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 20, 0, true, false);
     expect(result).not.toBeNull();
     // 有效空间 = 1160 x 960 x 800
-    // 旋转优化 + 尾余填充 + Z轴填充可装入 83 个
+    // MOG 混排优化后 83 个
     expect(result.count).toBe(83);
   });
 
