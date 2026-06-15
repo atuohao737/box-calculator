@@ -775,7 +775,8 @@ window.PackingEngine = (function() {
     while (q.length) { const cur = q.shift(); for (const d of dims) { const n = cur + d; if (n <= maxVal && !set.has(n)) { set.add(n); q.push(n); } } }
     return Array.from(set).sort((a, b) => a - b);
   }
-  function calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright) {
+  function calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, timeLimit) {
+    timeLimit = timeLimit || 15000; // 默认15秒，测试环境可传入短超时
     var cL = crateL - gap * 2, cW = crateW - gap * 2, cH = crateH - gap * 2;
     if (cL <= 0 || cW <= 0 || cH <= 0) return null;
     var rots = getRotations(boxL, boxW, boxH, allowRotate, keepUpright);
@@ -801,7 +802,7 @@ window.PackingEngine = (function() {
             cands2D.push({x:x, y:y, w:pw, h:pd}); } } }
       if (!cands2D.length) continue;
       var best2D = greedy2D(cands2D.slice().sort(function(a,b){return(a.y-b.y)||(a.x-b.x)}));
-      var t0 = Date.now(), tMax = zc >= 3 ? 1000 : 15000, stall = 0;
+      var t0 = Date.now(), tMax = zc >= 3 ? 1000 : timeLimit, stall = 0;
       while (Date.now()-t0 < tMax) {
         var arr = cands2D.slice().sort(function(){return Math.random()-0.5});
         var cand = greedy2D(arr);
@@ -858,6 +859,8 @@ window.PackingEngine = (function() {
 
   // bestSumApprox: 在不超过 target 的前提下，找 d1,d2 的非负整数组合
   // 使 d1个数 + d2个数 (即格子数) 最大。返回 { segments, total, count }
+  // 数学等价: max a+b s.t. a*d1 + b*d2 ≤ target, a≥0, b≥0
+  // 单次遍历 a 即可完备枚举所有 (a,b) 组合
   function bestSumApprox(target, d1, d2) {
     let bestCount = 0, bestA = 0, bestB = 0, bestSum = 0;
     const maxA = Math.floor(target / d1);
@@ -868,19 +871,6 @@ window.PackingEngine = (function() {
       const count = a + b;
       if (count > bestCount || (count === bestCount && total > bestSum)) {
         bestCount = count; bestA = a; bestB = b; bestSum = total;
-      }
-    }
-    // 也试试先放 d2 (即交换 d1/d2 的角色)
-    const maxB = Math.floor(target / d1); // d1 is the "larger" here but we treat symmetrically
-    for (let b = 0; b <= maxB; b++) {
-      const remaining = target - b * d1;
-      const a = Math.floor(remaining / d2);
-      const total = b * d1 + a * d2;
-      const count = a + b;
-      if (count > bestCount || (count === bestCount && total > bestSum)) {
-        bestCount = count; bestA = a; bestB = b; bestSum = total;
-        // Note: here a uses d2, b uses d1 (roles swapped)
-        // We'll normalize below
       }
     }
     // Build segment array: bestA copies of d1, then bestB copies of d2
@@ -990,7 +980,8 @@ window.PackingEngine = (function() {
     return bestResult;
   }
 
-  function calcPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, layerGap, allowRotate, keepUpright) {
+  function calcPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, layerGap, allowRotate, keepUpright, options) {
+    var enumTimeLimit = (options && options.enumTimeLimit) || 15000;
     const cL = crateL - gap * 2;
     const cW = crateW - gap * 2;
     const cH = crateH - gap * 2;
@@ -1179,9 +1170,9 @@ window.PackingEngine = (function() {
     // 枚举搜索: 仅当盒子维度差异大(含混排潜力)且利用率低且盒子总数多时触发
     var dimsSorted = [boxL, boxW, boxH].sort(function(a,b){return a-b});
     var dimRatio = dimsSorted[2] / dimsSorted[0]; // 最大/最小维度比
-    // 枚举搜索: 允许旋转时深度搜索 (测试环境跳过)
-    if (allowRotate && typeof process === 'undefined') {
-      var enumR = calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
+    // 枚举搜索: 允许旋转时深度搜索
+    if (allowRotate) {
+      var enumR = calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, enumTimeLimit);
       if (enumR && (!bestResult || enumR.count > bestResult.count ||
           (enumR.count === bestResult.count && enumR.utilRate > bestResult.utilRate))) {
         bestResult = enumR;
@@ -1583,14 +1574,15 @@ window.PackingEngine = (function() {
   }
 
   // 混装多轮重试（增强版，支持数量优先/空间优先策略 + 智能组合探索）
-  function calcMixedPacking(crateL, crateW, crateH, boxConfigs, gap, allowRotate, retryCount, strategy) {
+  function calcMixedPacking(crateL, crateW, crateH, boxConfigs, gap, allowRotate, retryCount, strategy, options) {
+    var enumTimeLimit = (options && options.enumTimeLimit) || 15000;
     // 只有1种纸箱且无数量限制时，直接使用单品模式的网格层叠算法
     // 因为空间分割算法对单一尺寸纸箱不如网格对齐+尾余填充算法高效
     const unconstrainedBoxes = boxConfigs.filter(bc => bc.qty === null);
     if (boxConfigs.length === 1 && unconstrainedBoxes.length === 1) {
       const bc = boxConfigs[0];
       const keepUpright = bc.box.keepUpright === true;
-      const singleResult = calcPacking(crateL, crateW, crateH, bc.box.l, bc.box.w, bc.box.h, gap, 0, allowRotate, keepUpright);
+      const singleResult = calcPacking(crateL, crateW, crateH, bc.box.l, bc.box.w, bc.box.h, gap, 0, allowRotate, keepUpright, options);
       if (singleResult) {
         // 转换为混装模式的结果格式
         singleResult.positions.forEach(p => {
@@ -1701,6 +1693,7 @@ window.PackingEngine = (function() {
     }
 
     // 混装顶层填充：fillGaps 之后，对顶部剩余空间铺一层网格
+    // 修复: 逐个检查碰撞，避免与已有纸箱重叠或飘空
     if (bestResult && bestResult.totalCount > 0 && bestResult.placed && bestResult.placed.length > 0) {
       var pl = bestResult.placed;
       var cL2 = bestResult.crateL;
@@ -1739,47 +1732,73 @@ window.PackingEngine = (function() {
             return vb - va;
           });
 
+          // 3D碰撞检测辅助函数
+          function ov3dTop(a, b) {
+            return a.x < b.x + b.l && a.x + a.l > b.x &&
+                   a.y < b.y + b.w && a.y + a.w > b.y &&
+                   a.z < b.z + b.h && a.z + a.h > b.z;
+          }
+
           for (var dk2 = 0; dk2 < dem2.length; dk2++) {
             var demItem = dem2[dk2];
             var bc4 = demItem.bc;
             var keepUp = bc4.box.keepUpright === true;
             var rots3 = getRotations(bc4.box.l, bc4.box.w, bc4.box.h, allowRotate, keepUp);
 
-            var bestN = 0, bestFill = null;
+            // 尝试每种朝向，选碰撞后剩余最多的
+            var bestValidCount = 0, bestValidFill = null, bestValidPositions = null;
             for (var ri3 = 0; ri3 < rots3.length; ri3++) {
               var r3 = rots3[ri3];
               var rl3 = r3[0], rw3 = r3[1], rh3 = r3[2];
               if (rh3 > remZ || rl3 > cL2 || rw3 > cW2) continue;
+
+              // 逐个放置并检查碰撞
               var fx3 = Math.floor(cL2 / rl3);
               var fy3 = Math.floor(cW2 / rw3);
-              var n3 = fx3 * fy3;
-              if (n3 > bestN) {
-                bestN = n3;
-                bestFill = { rl: rl3, rw: rw3, rh: rh3, fx: fx3, fy: fy3 };
+              var validPos = [];
+              for (var x3 = 0; x3 < fx3; x3++) {
+                for (var y3 = 0; y3 < fy3; y3++) {
+                  var cand = {
+                    x: g2 + x3 * rl3, y: g2 + y3 * rw3, z: maxTop,
+                    l: rl3, w: rw3, h: rh3
+                  };
+                  // 检查是否与已有纸箱重叠
+                  var hasOverlap = false;
+                  for (var oi = 0; oi < pl.length; oi++) {
+                    if (ov3dTop(cand, pl[oi])) { hasOverlap = true; break; }
+                  }
+                  // 也检查与本次已放入的顶填纸箱重叠
+                  if (!hasOverlap) {
+                    for (var vi = 0; vi < validPos.length; vi++) {
+                      if (ov3dTop(cand, validPos[vi])) { hasOverlap = true; break; }
+                    }
+                  }
+                  if (!hasOverlap) validPos.push(cand);
+                }
+              }
+              if (validPos.length > bestValidCount) {
+                bestValidCount = validPos.length;
+                bestValidFill = { rl: rl3, rw: rw3, rh: rh3 };
+                bestValidPositions = validPos;
               }
             }
 
-            if (bestFill && bestN > 0) {
-              var actual = Math.min(bestN, demItem.remaining);
+            if (bestValidPositions && bestValidCount > 0) {
+              var actual = Math.min(bestValidCount, demItem.remaining);
               if (actual > 0) {
                 var origD = [bc4.box.l, bc4.box.w, bc4.box.h];
-                var isRot = !(bestFill.rl === origD[0] && bestFill.rw === origD[1] && bestFill.rh === origD[2]);
-                var cnt4 = 0;
-                for (var x3 = 0; x3 < bestFill.fx && cnt4 < actual; x3++) {
-                  for (var y3 = 0; y3 < bestFill.fy && cnt4 < actual; y3++) {
-                    pl.push({
-                      x: g2 + x3 * bestFill.rl,
-                      y: g2 + y3 * bestFill.rw,
-                      z: maxTop,
-                      l: bestFill.rl, w: bestFill.rw, h: bestFill.rh,
-                      boxIdx: demItem.idx,
-                      color: bc4.box.color,
-                      name: bc4.box.name,
-                      rotated: isRot,
-                      origL: bc4.box.l, origW: bc4.box.w, origH: bc4.box.h
-                    });
-                    cnt4++;
-                  }
+                var isRot = !(bestValidFill.rl === origD[0] && bestValidFill.rw === origD[1] && bestValidFill.rh === origD[2]);
+                for (var vi2 = 0; vi2 < actual; vi2++) {
+                  var vp = bestValidPositions[vi2];
+                  pl.push({
+                    x: vp.x, y: vp.y, z: vp.z,
+                    l: vp.l, w: vp.w, h: vp.h,
+                    boxIdx: demItem.idx,
+                    color: bc4.box.color,
+                    name: bc4.box.name,
+                    rotated: isRot,
+                    origL: bc4.box.l, origW: bc4.box.w, origH: bc4.box.h
+                  });
                 }
 
                 // 更新统计
@@ -1807,13 +1826,13 @@ window.PackingEngine = (function() {
       }
     }
 
-    // === 枚举搜索增强 (完整2D层搜索+层叠+顶填, 浏览器环境) ===
-    if (allowRotate && bestResult && bestResult.totalCount > 0 && typeof process === 'undefined') {
+    // === 枚举搜索增强 (完整2D层搜索+层叠+顶填) ===
+    if (allowRotate && bestResult && bestResult.totalCount > 0) {
       // 对每种纸箱跑完整枚举
       var enumResults = [];
       for (var ei = 0; ei < boxConfigs.length; ei++) {
         var ebc = boxConfigs[ei];
-        var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright);
+        var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
         if (enumR && enumR.count > 0) {
           enumResults.push({ bc: ebc, idx: ei, count: enumR.count, positions: enumR.positions });
           // 提取最优朝向
@@ -1830,60 +1849,25 @@ window.PackingEngine = (function() {
       }
 
       if (enumResults.length > 0) {
-        var cL2 = crateL - gap * 2, cW2 = crateW - gap * 2, cH2 = crateH - gap * 2;
-
         // 策略A: 用枚举结果的总数设qty目标, 带朝向偏好重跑贪心
+        // 注意：保持真正有需求(qty)的纸箱优先，枚举推导的qty只在原无限量纸箱内部竞争
         var targetedConfigs = boxConfigs.map(function(bc) {
           var c = { box: bc.box, qty: bc.qty, _enumOrient: bc._enumOrient };
           if (bc.qty === null && bc._enumCount) c.qty = bc._enumCount;
           return c;
         });
-        var ta = calcMixedPackingOnce(crateL, crateW, crateH, targetedConfigs, gap, allowRotate, null);
+        // 构建排序：真正有原始需求的纸箱排前，枚举推导的排后
+        var targetedSort = targetedConfigs.map(function(_, i) { return i; }).sort(function(a, b) {
+          var aReal = boxConfigs[a].qty !== null ? 0 : 1; // 0=真正需求, 1=枚举推导
+          var bReal = boxConfigs[b].qty !== null ? 0 : 1;
+          if (aReal !== bReal) return aReal - bReal;
+          var volA = targetedConfigs[a].box.l * targetedConfigs[a].box.w * targetedConfigs[a].box.h;
+          var volB = targetedConfigs[b].box.l * targetedConfigs[b].box.w * targetedConfigs[b].box.h;
+          return volB - volA;
+        });
+        var ta = calcMixedPackingOnce(crateL, crateW, crateH, targetedConfigs, gap, allowRotate, targetedSort);
         if (ta && ta.totalCount > bestResult.totalCount) bestResult = ta;
         else if (ta && ta.totalCount === bestResult.totalCount && ta.utilRate > bestResult.utilRate) bestResult = ta;
-
-        // 策略B: 将各纸箱的枚举排列位置合并, 用3D贪心选不冲突的
-        var allPositions = [];
-        for (var ei2 = 0; ei2 < enumResults.length; ei2++) {
-          var epos = enumResults[ei2].positions;
-          for (var pi = 0; pi < epos.length; pi++) {
-            allPositions.push({
-              x: epos[pi].x, y: epos[pi].y, z: epos[pi].z,
-              l: epos[pi].l, w: epos[pi].w, h: epos[pi].h,
-              boxIdx: enumResults[ei2].idx,
-              rotated: epos[pi].rotated,
-              color: enumResults[ei2].bc.box.color,
-              name: enumResults[ei2].bc.box.name,
-              origL: enumResults[ei2].bc.box.l,
-              origW: enumResults[ei2].bc.box.w,
-              origH: enumResults[ei2].bc.box.h
-            });
-          }
-        }
-        // 按体积降序, 大盒优先
-        allPositions.sort(function(a, b) { return (b.l*b.w*b.h) - (a.l*a.w*a.h) || (a.z+b.z+a.x+b.x) - (b.z+b.z+b.x+b.x); });
-        var placed2 = [];
-        function ov3d(a,b){return a.x<b.x+b.l&&a.x+a.l>b.x&&a.y<b.y+b.w&&a.y+a.w>b.y&&a.z<b.z+b.h&&a.z+a.h>b.z;}
-        for (var ai = 0; ai < allPositions.length; ai++) {
-          var p = allPositions[ai];
-          var ok = true;
-          for (var qi = 0; qi < placed2.length; qi++) { if (ov3d(p, placed2[qi])) { ok = false; break; } }
-          if (ok) placed2.push(p);
-        }
-        var usedV2 = 0; for (var ui = 0; ui < placed2.length; ui++) usedV2 += placed2[ui].l*placed2[ui].w*placed2[ui].h;
-        var tb = {
-          placed: placed2, totalCount: placed2.length,
-          utilRate: usedV2 / (cL2*cW2*cH2),
-          breakdown: boxConfigs.map(function(bc, bi) {
-            var c = 0; for (var qi2 = 0; qi2 < placed2.length; qi2++) if (placed2[qi2].boxIdx === bi) c++;
-            return { box: bc.box, count: c, requested: bc.qty };
-          }),
-          crateL_raw: crateL, crateW_raw: crateW, crateH_raw: crateH,
-          crateL: cL2, crateW: cW2, crateH: cH2,
-          hasRotation: placed2.some(function(p) { return p.rotated; }), gap: gap
-        };
-        if (tb.totalCount > bestResult.totalCount) bestResult = tb;
-        else if (tb.totalCount === bestResult.totalCount && tb.utilRate > bestResult.utilRate) bestResult = tb;
       }
     }
 
@@ -3657,7 +3641,7 @@ window.UIRenderer = (function() {
       const reqStr = b.requested !== null ? '(需求:' + b.requested + ')' : '';
       let dimInfo = '';
       if (placedByBoxIdx[i] && placedByBoxIdx[i].dims.size > 1) {
-        dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转 | ' + Array.from(placedByBoxIdx[i].dims).join(' | ') + '</span>';
+        dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转</span>';
       }
       return '<div class="mix-breakdown-row">' +
         '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + escapeHtml(b.box.name) + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +

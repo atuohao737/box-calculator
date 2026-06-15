@@ -511,7 +511,7 @@ window.UIRenderer = (function() {
       const reqStr = b.requested !== null ? '(需求:' + b.requested + ')' : '';
       let dimInfo = '';
       if (placedByBoxIdx[i] && placedByBoxIdx[i].dims.size > 1) {
-        dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转 | ' + Array.from(placedByBoxIdx[i].dims).join(' | ') + '</span>';
+        dimInfo = '<br><span style="color:#fa8c16;font-size:10px">🔄 含' + placedByBoxIdx[i].rotated + '个旋转</span>';
       }
       return '<div class="mix-breakdown-row">' +
         '<div class="mbd-name"><span class="color-dot" style="background:' + b.box.color + '"></span><span>' + escapeHtml(b.box.name) + ' <span style="color:#bbb;font-size:11px">' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm ' + reqStr + '</span></span>' + dimInfo + '</div>' +

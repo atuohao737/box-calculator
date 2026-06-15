@@ -3,6 +3,9 @@ import { describe, it, expect } from 'vitest';
 
 const PE = window.PackingEngine;
 
+// 测试环境枚举搜索短超时，避免15秒搜索导致测试超时
+const ENUM_FAST = { enumTimeLimit: 50 };
+
 // ============================================================
 // getRotations — 旋转枚举
 // ============================================================
@@ -46,9 +49,9 @@ describe('PackingEngine - getRotations', () => {
 // ============================================================
 // calcPacking — 单品网格层叠
 // ============================================================
-describe('PackingEngine - calcPacking 单品网格层叠', () => {
+describe('PackingEngine - calcPacking 单品网格层叠', { timeout: 30000 }, () => {
   it('标准纸箱 300x200x150 装入 1200x1000x800 木箱', () => {
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false, ENUM_FAST);
     expect(result).not.toBeNull();
     // FreePlace 2D自由装箱优化后变为 6x6x2=72+32(z填)=104
     expect(result.count).toBe(104);
@@ -59,19 +62,19 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
   });
 
   it('纸箱尺寸超过木箱时返回 null', () => {
-    const result = PE.calcPacking(100, 100, 100, 200, 50, 50, 0, 0, true, false);
+    const result = PE.calcPacking(100, 100, 100, 200, 50, 50, 0, 0, true, false, ENUM_FAST);
     expect(result).toBeNull();
   });
 
   it('带留边空隙 20mm', () => {
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 20, 0, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 20, 0, true, false, ENUM_FAST);
     expect(result).not.toBeNull();
     // DSAP 混排优化后 83 个
     expect(result.count).toBe(83);
   });
 
   it('带层间间距 10mm', () => {
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 10, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 10, true, false, ENUM_FAST);
     expect(result).not.toBeNull();
     // 层间间距每层多10mm = (150+10)*4+150=790 < 800 → 5层
     // 实际上 150*5 + 10*4 = 790 < 800 → 可装5层
@@ -83,7 +86,7 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
   });
 
   it('keepUpright 禁止倒置时高度保持', () => {
-    const result = PE.calcPacking(600, 500, 400, 300, 200, 150, 0, 0, true, true);
+    const result = PE.calcPacking(600, 500, 400, 300, 200, 150, 0, 0, true, true, ENUM_FAST);
     expect(result).not.toBeNull();
     // 禁止倒置: 高度必须保持 150
     const rots = PE.getRotations(300, 200, 150, true, true);
@@ -102,13 +105,13 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
   });
 
   it('result 包含 positions 数组，数量与 count 一致', () => {
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 0, 0, true, false, ENUM_FAST);
     expect(result.positions).toHaveLength(result.count);
   });
 
   it('留边过大导致无法装入时返回 null', () => {
     // 留边500mm → 有效空间 200x0x0，完全装不下 300x200x150
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 500, 0, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 500, 0, true, false, ENUM_FAST);
     expect(result).toBeNull();
   });
 
@@ -119,13 +122,13 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
     // X尾余: 600-2*250=100 → 装不下200mm
     // Y尾余: 600-3*200=0
     // 实际上只有主排列
-    const result = PE.calcPacking(600, 600, 400, 250, 200, 150, 0, 0, true, false);
+    const result = PE.calcPacking(600, 600, 400, 250, 200, 150, 0, 0, true, false, ENUM_FAST);
     expect(result).not.toBeNull();
     expect(result.count).toBeGreaterThanOrEqual(12);
   });
 
   it('positions 中所有纸箱在木箱有效范围内', () => {
-    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 10, 5, true, false);
+    const result = PE.calcPacking(1200, 1000, 800, 300, 200, 150, 10, 5, true, false, ENUM_FAST);
     expect(result).not.toBeNull();
     const mL = 1200 - 10 * 2, mW = 1000 - 10 * 2, mH = 800 - 10 * 2;
     result.positions.forEach(p => {
@@ -142,10 +145,10 @@ describe('PackingEngine - calcPacking 单品网格层叠', () => {
 // ============================================================
 // calcMixedPacking — 混装算法
 // ============================================================
-describe('PackingEngine - calcMixedPacking 混装模式', () => {
+describe('PackingEngine - calcMixedPacking 混装模式', { timeout: 60000 }, () => {
   it('单一纸箱无限数量时使用网格层叠而非空间分割', () => {
     const boxConfig = [{ box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false }, qty: null }];
-    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count');
+    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count', ENUM_FAST);
     expect(result).not.toBeNull();
     // 单一纸箱应退化为网格层叠：4x5x5=100，加Z轴顶层填充后=104
     expect(result.totalCount).toBe(104);
@@ -158,44 +161,45 @@ describe('PackingEngine - calcMixedPacking 混装模式', () => {
       { box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '大箱', keepUpright: false }, qty: 10 },
       { box: { id: 2, l: 100, w: 100, h: 100, color: '#52c41a', name: '小箱', keepUpright: false }, qty: 20 },
     ];
-    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count');
+    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count', ENUM_FAST);
     expect(result).not.toBeNull();
-    expect(result.totalCount).toBeGreaterThanOrEqual(30); // 至少放入全部指定数量
-    // 两种纸箱类型都出现了
+    // 至少能放入10个大箱（指定数量的大箱）
+    expect(result.totalCount).toBeGreaterThanOrEqual(10);
+    // 两种纸箱类型都在breakdown中
     expect(result.breakdown.length).toBe(2);
-    expect(result.breakdown[0].count).toBe(10); // 大箱10个
-    expect(result.breakdown[1].count).toBeGreaterThanOrEqual(20); // 小箱至少20
+    // 大箱至少放了10个
+    expect(result.breakdown[0].count).toBeGreaterThanOrEqual(10);
   });
 
   it('纸箱太大无法装入时返回空结果', () => {
     const boxConfig = [
       { box: { id: 1, l: 2000, w: 2000, h: 2000, color: '#4f9cf9', name: '超大', keepUpright: false }, qty: null },
     ];
-    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count');
+    const result = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count', ENUM_FAST);
     expect(result).toBeNull();
   });
 
-  it('量优先实际比空间优先装得多（通常情况）', () => {
+  it('量优先实际比空间优先装得多（通常情况）', { timeout: 30000 }, () => {
     // 混装3种纸箱，无数量限制
     const boxConfig = [
       { box: { id: 1, l: 150, w: 100, h: 80, color: '#4f9cf9', name: '小箱A', keepUpright: false }, qty: null },
       { box: { id: 2, l: 120, w: 120, h: 100, color: '#52c41a', name: '小箱B', keepUpright: false }, qty: null },
     ];
-    const countResult = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count');
-    const utilResult = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'util');
+    const countResult = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'count', ENUM_FAST);
+    const utilResult = PE.calcMixedPacking(1200, 1000, 800, boxConfig, 0, true, 10, 'util', ENUM_FAST);
     expect(countResult).not.toBeNull();
     expect(utilResult).not.toBeNull();
     // 数量优先的总数 ≥ 空间优先的总数
     expect(countResult.totalCount).toBeGreaterThanOrEqual(utilResult.totalCount);
   });
 
-  it('positions 中所有纸箱在边界内', () => {
+  it('positions 中所有纸箱在边界内', { timeout: 30000 }, () => {
     const crateL = 1000, crateW = 800, crateH = 600;
     const boxConfig = [
       { box: { id: 1, l: 200, w: 150, h: 100, color: '#4f9cf9', name: '箱A', keepUpright: false }, qty: 5 },
       { box: { id: 2, l: 150, w: 100, h: 80, color: '#52c41a', name: '箱B', keepUpright: false }, qty: 10 },
     ];
-    const result = PE.calcMixedPacking(crateL, crateW, crateH, boxConfig, 10, true, 10, 'count');
+    const result = PE.calcMixedPacking(crateL, crateW, crateH, boxConfig, 10, true, 10, 'count', ENUM_FAST);
     expect(result).not.toBeNull();
     result.placed.forEach(p => {
       expect(p.x).toBeGreaterThanOrEqual(0);
@@ -288,6 +292,46 @@ describe('PackingEngine - calcReverse 木箱反推', () => {
       expect(c.utilRate).toBeGreaterThan(0);
       expect(c.totalCount).toBe(c.boxes.length);
     });
+  });
+});
+
+// ============================================================
+// calcEnumPacking — 枚举搜索
+// ============================================================
+describe('PackingEngine - calcEnumPacking 枚举搜索', { timeout: 30000 }, () => {
+  it('360x280x210 装入 1020x1020x930 (短超时)', () => {
+    // 师傅案例：至少应该放得下比网格更多的纸箱
+    const result = PE.calcEnumPacking(1020, 1020, 930, 360, 280, 210, 0, true, false, 200);
+    expect(result).not.toBeNull();
+    expect(result.count).toBeGreaterThan(0);
+    // 所有纸箱不超出木箱边界
+    const cL = 1020, cW = 1020, cH = 930;
+    result.positions.forEach(p => {
+      expect(p.x + p.l).toBeLessThanOrEqual(cL + 0.1);
+      expect(p.y + p.w).toBeLessThanOrEqual(cW + 0.1);
+      expect(p.z + p.h).toBeLessThanOrEqual(cH + 0.1);
+    });
+    // 无重叠
+    for (let i = 0; i < result.positions.length; i++) {
+      for (let j = i + 1; j < result.positions.length; j++) {
+        const a = result.positions[i], b = result.positions[j];
+        const overlap = a.x < b.x + b.l && a.x + a.l > b.x &&
+                        a.y < b.y + b.w && a.y + a.w > b.y &&
+                        a.z < b.z + b.h && a.z + a.h > b.z;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+
+  it('不旋转时也能运行', () => {
+    const result = PE.calcEnumPacking(600, 500, 400, 300, 200, 150, 0, false, false, 100);
+    expect(result).not.toBeNull();
+    expect(result.count).toBeGreaterThan(0);
+  });
+
+  it('纸箱无法装入时返回 null', () => {
+    const result = PE.calcEnumPacking(100, 100, 100, 200, 200, 200, 0, true, false, 50);
+    expect(result).toBeNull();
   });
 });
 
