@@ -1054,12 +1054,16 @@ window.PackingEngine = (function() {
       }
     }
 
-    // === 枚举搜索增强 (浏览器环境) ===
+    // === 枚举搜索增强 (完整2D层搜索+层叠+顶填, 浏览器环境) ===
     if (allowRotate && bestResult && bestResult.totalCount > 0 && typeof process === 'undefined') {
+      // 对每种纸箱跑完整枚举
+      var enumResults = [];
       for (var ei = 0; ei < boxConfigs.length; ei++) {
         var ebc = boxConfigs[ei];
         var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright);
-        if (enumR && enumR.count > 0 && enumR.positions.length > 0) {
+        if (enumR && enumR.count > 0) {
+          enumResults.push({ bc: ebc, idx: ei, count: enumR.count, positions: enumR.positions });
+          // 提取最优朝向
           var ocs = {};
           for (var epi = 0; epi < enumR.positions.length; epi++) {
             var ok = enumR.positions[epi].l + ',' + enumR.positions[epi].w + ',' + enumR.positions[epi].h;
@@ -1068,12 +1072,65 @@ window.PackingEngine = (function() {
           var bk = '', bc2 = 0;
           for (var k in ocs) { if (ocs[k] > bc2) { bc2 = ocs[k]; bk = k; } }
           if (bk) { var ps = bk.split(','); ebc._enumOrient = [parseInt(ps[0]), parseInt(ps[1]), parseInt(ps[2])]; }
+          ebc._enumCount = enumR.count;
         }
       }
-      if (boxConfigs.some(function(bc) { return bc._enumOrient; })) {
-        var hinted = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, null);
-        if (hinted && hinted.totalCount > bestResult.totalCount) bestResult = hinted;
-        else if (hinted && hinted.totalCount === bestResult.totalCount && hinted.utilRate > bestResult.utilRate) bestResult = hinted;
+
+      if (enumResults.length > 0) {
+        var cL2 = crateL - gap * 2, cW2 = crateW - gap * 2, cH2 = crateH - gap * 2;
+
+        // 策略A: 用枚举结果的总数设qty目标, 带朝向偏好重跑贪心
+        var targetedConfigs = boxConfigs.map(function(bc) {
+          var c = { box: bc.box, qty: bc.qty, _enumOrient: bc._enumOrient };
+          if (bc.qty === null && bc._enumCount) c.qty = bc._enumCount;
+          return c;
+        });
+        var ta = calcMixedPackingOnce(crateL, crateW, crateH, targetedConfigs, gap, allowRotate, null);
+        if (ta && ta.totalCount > bestResult.totalCount) bestResult = ta;
+        else if (ta && ta.totalCount === bestResult.totalCount && ta.utilRate > bestResult.utilRate) bestResult = ta;
+
+        // 策略B: 将各纸箱的枚举排列位置合并, 用3D贪心选不冲突的
+        var allPositions = [];
+        for (var ei2 = 0; ei2 < enumResults.length; ei2++) {
+          var epos = enumResults[ei2].positions;
+          for (var pi = 0; pi < epos.length; pi++) {
+            allPositions.push({
+              x: epos[pi].x, y: epos[pi].y, z: epos[pi].z,
+              l: epos[pi].l, w: epos[pi].w, h: epos[pi].h,
+              boxIdx: enumResults[ei2].idx,
+              rotated: epos[pi].rotated,
+              color: enumResults[ei2].bc.box.color,
+              name: enumResults[ei2].bc.box.name,
+              origL: enumResults[ei2].bc.box.l,
+              origW: enumResults[ei2].bc.box.w,
+              origH: enumResults[ei2].bc.box.h
+            });
+          }
+        }
+        // 按体积降序, 大盒优先
+        allPositions.sort(function(a, b) { return (b.l*b.w*b.h) - (a.l*a.w*a.h) || (a.z+b.z+a.x+b.x) - (b.z+b.z+b.x+b.x); });
+        var placed2 = [];
+        function ov3d(a,b){return a.x<b.x+b.l&&a.x+a.l>b.x&&a.y<b.y+b.w&&a.y+a.w>b.y&&a.z<b.z+b.h&&a.z+a.h>b.z;}
+        for (var ai = 0; ai < allPositions.length; ai++) {
+          var p = allPositions[ai];
+          var ok = true;
+          for (var qi = 0; qi < placed2.length; qi++) { if (ov3d(p, placed2[qi])) { ok = false; break; } }
+          if (ok) placed2.push(p);
+        }
+        var usedV2 = 0; for (var ui = 0; ui < placed2.length; ui++) usedV2 += placed2[ui].l*placed2[ui].w*placed2[ui].h;
+        var tb = {
+          placed: placed2, totalCount: placed2.length,
+          utilRate: usedV2 / (cL2*cW2*cH2),
+          breakdown: boxConfigs.map(function(bc, bi) {
+            var c = 0; for (var qi2 = 0; qi2 < placed2.length; qi2++) if (placed2[qi2].boxIdx === bi) c++;
+            return { box: bc.box, count: c, requested: bc.qty };
+          }),
+          crateL_raw: crateL, crateW_raw: crateW, crateH_raw: crateH,
+          crateL: cL2, crateW: cW2, crateH: cH2,
+          hasRotation: placed2.some(function(p) { return p.rotated; }), gap: gap
+        };
+        if (tb.totalCount > bestResult.totalCount) bestResult = tb;
+        else if (tb.totalCount === bestResult.totalCount && tb.utilRate > bestResult.utilRate) bestResult = tb;
       }
     }
 
