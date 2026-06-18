@@ -372,7 +372,7 @@ window.UIRenderer = (function() {
       var keys = Object.keys(boxSummary);
       keys.forEach(function(k) {
         var bs = boxSummary[k];
-        html += '<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span class="color-dot" style="background:' + bs.color + ';width:8px;height:8px;flex-shrink:0"></span>' + k + ' <span style="color:#888">' + bs.dims + '</span> ×<b>' + bs.count + '</b></div>';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span class="color-dot" style="background:' + bs.color + ';width:8px;height:8px;flex-shrink:0"></span>' + escapeHtml(k) + ' <span style="color:#888">' + bs.dims + '</span> ×<b>' + bs.count + '</b></div>';
       });
       if (c.overflowCount > 0) {
         html += '<div style="color:#ff4d4f;margin-top:4px">⚠ 还有 ' + c.overflowCount + ' 个纸箱无法装入</div>';
@@ -449,7 +449,6 @@ window.UIRenderer = (function() {
     }
     const util = (result.utilRate * 100).toFixed(1);
     const utilColor = result.utilRate > 0.7 ? '#52c41a' : result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
-    const tailFill = result.count - result.xCount * result.yCount * result.zCount;
 
     // 重量信息
     let weightHtml = '';
@@ -483,8 +482,6 @@ window.UIRenderer = (function() {
       '<div class="arrange-detail">' +
         '<div style="font-size:11px;color:#aaa;margin-bottom:6px">实际摆放方向</div>' +
         '<div class="arr-row"><span class="arr-label">纸箱尺寸（实际）</span><span class="arr-val">' + result.bL + '×' + result.bW + '×' + result.bH + ' mm</span></div>' +
-        '<div class="arr-row"><span class="arr-label">排列（X × Y × Z）</span><span class="arr-val">' + result.xCount + ' × ' + result.yCount + ' × ' + result.zCount + '</span></div>' +
-        (tailFill > 0 ? '<div class="arr-row"><span class="arr-label">旋转填充增额</span><span class="arr-val" style="color:#fa8c16">+' + tailFill + ' 个</span></div>' : '') +
         '<div class="arr-row"><span class="arr-label">木箱内容积</span><span class="arr-val">' + (crateL * crateW * crateH / 1e9).toFixed(3) + ' m³</span></div>' +
       '</div>' +
       '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +

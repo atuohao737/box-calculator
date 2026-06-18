@@ -22,6 +22,8 @@ window.PackingEngine = (function() {
     while (q.length) { const cur = q.shift(); for (const d of dims) { const n = cur + d; if (n <= maxVal && !set.has(n)) { set.add(n); q.push(n); } } }
     return Array.from(set).sort((a, b) => a - b);
   }
+  function ov2(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+  function greedy2D(arr){var r=[];for(var ai=0;ai<arr.length;ai++){var p=arr[ai],ok=1;for(var qi=0;qi<r.length;qi++)if(ov2(p,r[qi])){ok=0;break}if(ok)r.push(p)}return r}
   function calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, timeLimit) {
     timeLimit = timeLimit || 15000; // 默认15秒，测试环境可传入短超时
     var cL = crateL - gap * 2, cW = crateW - gap * 2, cH = crateH - gap * 2;
@@ -29,8 +31,6 @@ window.PackingEngine = (function() {
     var rots = getRotations(boxL, boxW, boxH, allowRotate, keepUpright);
     var allDims = [boxL, boxW, boxH].filter(function(v,i,a){return a.indexOf(v)===i}).sort(function(a,b){return a-b});
     var xsAll = generateCoords(cL, allDims), ysAll = generateCoords(cW, allDims);
-    function ov2(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
-    function greedy2D(arr){var r=[];for(var ai=0;ai<arr.length;ai++){var p=arr[ai],ok=1;for(var qi=0;qi<r.length;qi++)if(ov2(p,r[qi])){ok=0;break}if(ok)r.push(p)}return r}
     var bestPlan = null;
     for (var ri = 0; ri < rots.length; ri++) {
       var bl = rots[ri][0], bw = rots[ri][1], bh = rots[ri][2];
@@ -419,12 +419,25 @@ window.PackingEngine = (function() {
     var dimRatio = dimsSorted[2] / dimsSorted[0]; // 最大/最小维度比
     // 枚举搜索: 允许旋转时深度搜索
     if (allowRotate) {
+      // 原有枚举搜索 — 已屏蔽，优化枚举完全覆盖其能力
+      /*
       var enumR = calcEnumPacking(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, enumTimeLimit);
+      console.log('[原始枚举] count=' + (enumR ? enumR.count : 'null'));
       if (enumR && (!bestResult || enumR.count > bestResult.count ||
           (enumR.count === bestResult.count && enumR.utilRate > bestResult.utilRate))) {
         bestResult = enumR;
+        console.log('[原始枚举] 胜出! count=' + enumR.count);
+      }
+      */
+
+      // 优化枚举搜索（DSAP + Monte Carlo）
+      var enumR2 = calcEnumPackingOptimized(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, enumTimeLimit);
+      if (enumR2 && (!bestResult || enumR2.count > bestResult.count ||
+          (enumR2.count === bestResult.count && enumR2.utilRate > bestResult.utilRate))) {
+        bestResult = enumR2;
       }
     }
+    console.log('[calcPacking最终] count=' + (bestResult ? bestResult.count : 0));
     return bestResult;
   }
 
@@ -1077,6 +1090,7 @@ window.PackingEngine = (function() {
     if (allowRotate && bestResult && bestResult.totalCount > 0) {
       // 对每种纸箱跑完整枚举
       var enumResults = [];
+      var enumInfoMap = {};
       for (var ei = 0; ei < boxConfigs.length; ei++) {
         var ebc = boxConfigs[ei];
         var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
@@ -1090,17 +1104,17 @@ window.PackingEngine = (function() {
           }
           var bk = '', bc2 = 0;
           for (var k in ocs) { if (ocs[k] > bc2) { bc2 = ocs[k]; bk = k; } }
-          if (bk) { var ps = bk.split(','); ebc._enumOrient = [parseInt(ps[0]), parseInt(ps[1]), parseInt(ps[2])]; }
-          ebc._enumCount = enumR.count;
+          if (bk) { var ps = bk.split(','); enumInfoMap[ei] = { orient: [parseInt(ps[0]), parseInt(ps[1]), parseInt(ps[2])], count: enumR.count }; }
         }
       }
 
       if (enumResults.length > 0) {
         // 策略A: 用枚举结果的总数设qty目标, 带朝向偏好重跑贪心
         // 注意：保持真正有需求(qty)的纸箱优先，枚举推导的qty只在原无限量纸箱内部竞争
-        var targetedConfigs = boxConfigs.map(function(bc) {
-          var c = { box: bc.box, qty: bc.qty, _enumOrient: bc._enumOrient };
-          if (bc.qty === null && bc._enumCount) c.qty = bc._enumCount;
+        var targetedConfigs = boxConfigs.map(function(bc, i) {
+          var ei = enumInfoMap[i];
+          var c = { box: bc.box, qty: bc.qty, _enumOrient: ei ? ei.orient : null };
+          if (bc.qty === null && ei && ei.count) c.qty = ei.count;
           return c;
         });
         // 构建排序：真正有原始需求的纸箱排前，枚举推导的排后
@@ -1492,5 +1506,184 @@ window.PackingEngine = (function() {
     return results;
   }
 
-  return { getRotations, calcPacking, calcMixedPacking, calcMixedPackingOnce, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps, calcDSAPLayer, bestSumApprox, canFitCell, buildDSAPGrid, calcEnumPacking };
+  // ============================================================
+  // 优化枚举搜索 (从 optimized-packing.js 内嵌，避免 IIFE 加载顺序问题)
+  // DSAP 分段枚举 + 坐标离散化 + greedy2D Monte Carlo
+  // ============================================================
+
+  function enumSegmentPatternsOpt(target, d1, d2) {
+    const results = []
+    const maxA = Math.floor(target / d1)
+    for (let a = 0; a <= maxA; a++) {
+      const rem = target - a * d1, maxB = Math.floor(rem / d2)
+      for (let b = 0; b <= maxB; b++) {
+        const segs = []; for (let i = 0; i < a; i++) segs.push(d1); for (let i = 0; i < b; i++) segs.push(d2)
+        results.push({ segs: segs, sum: a * d1 + b * d2 })
+      }
+    }
+    results.sort(function (a, b) { return b.segs.length - a.segs.length || b.sum - a.sum })
+    return results
+  }
+
+  function evalPatternGridOpt(xSegs, ySegs, d1, d2) {
+    const cells = []; let xOff = 0
+    for (const cw of xSegs) {
+      let yOff = 0
+      for (const ch of ySegs) {
+        var fDir = d1 <= cw && d2 <= ch
+        var fRot = d2 <= cw && d1 <= ch
+        if (fDir || fRot) {
+          cells.push({ x: xOff, y: yOff, w: fDir ? d1 : d2, h: fDir ? d2 : d1 })
+        }
+        yOff += ch
+      }
+      xOff += cw
+    }
+    return cells
+  }
+
+  function findBest2DDetOpt(planeL, planeW, d1, d2) {
+    const xPatterns = enumSegmentPatternsOpt(planeL, d1, d2)
+    const yPatterns = enumSegmentPatternsOpt(planeW, d1, d2)
+    const topX = xPatterns.slice(0, 8), topY = yPatterns.slice(0, 8)
+    let best = []
+    for (const xp of topX) { for (const yp of topY) { const c = evalPatternGridOpt(xp.segs, yp.segs, d1, d2); if (c.length > best.length) best = c } }
+    return best
+  }
+
+  function findBest2DOpt(planeL, planeW, dimsA, dimsB, timeBudgetMs) {
+    const det1 = findBest2DDetOpt(planeL, planeW, dimsA[0], dimsA[1])
+    const det2 = dimsA[0] !== dimsB[0] || dimsA[1] !== dimsB[1] ? findBest2DDetOpt(planeL, planeW, dimsB[0], dimsB[1]) : []
+    let best = det1.length >= det2.length ? det1 : det2
+
+    const rDims = [dimsA[0], dimsA[1]].filter(function (v, i, a) { return a.indexOf(v) === i })
+    const xs = generateCoords(planeL, rDims), ys = generateCoords(planeW, rDims)
+    const cands = []
+    for (const pwpd of [dimsA, dimsB]) { const pw = pwpd[0], pd = pwpd[1]; if (pw === dimsA[0] && pd === dimsA[1] && dimsA[0] === dimsB[0] && dimsA[1] === dimsB[1]) { if (cands.length > 0) continue } for (const x of xs) { if (x + pw > planeL) break; for (const y of ys) { if (y + pd > planeW) break; cands.push({ x: x, y: y, w: pw, h: pd }) } } }
+
+    if (cands.length > 0) {
+      if (best.length === 0) best = greedy2D(cands.slice().sort(function (a, b) { return a.y - b.y || a.x - b.x }))
+      const attempts = 5, perAttempt = Math.floor(timeBudgetMs / attempts)
+      for (let att = 0; att < attempts; att++) {
+        const t0 = Date.now(); let stall = 0
+        while (Date.now() - t0 < perAttempt) {
+          const shuffled = cands.slice().sort(function () { return Math.random() - 0.5 })
+          const cand = greedy2D(shuffled)
+          if (cand.length > best.length) { best = cand; stall = 0 }
+          else { stall++; if (stall > 500000) break }
+        }
+      }
+    }
+    return best
+  }
+
+  function onePassOpt(cL, cW, cH, bL, bW, bH, rots, timeLimitMs) {
+    var globalT0 = Date.now()
+    var bestPlan = null
+
+    var perRotBudget = Math.max(Math.floor(timeLimitMs / rots.length), 1500)
+    var perAttempt = Math.floor(perRotBudget / 4)
+
+    for (var ri = 0; ri < rots.length; ri++) {
+      if (Date.now() - globalT0 > timeLimitMs * 2) break
+      var rl = rots[ri][0], rw = rots[ri][1], rh = rots[ri][2]
+      if (rl > cL || rw > cW || rh > cH) continue
+
+      var layers = Math.floor(cH / rh)
+      if (layers === 0) continue
+
+      var best2D = []
+      for (var att = 0; att < 3; att++) {
+        if (Date.now() - globalT0 > timeLimitMs * 2) break
+        var cells = findBest2DOpt(cL, cW, [rl, rw], [rw, rl], perAttempt)
+        if (cells.length > best2D.length) best2D = cells
+      }
+      if (best2D.length === 0) continue
+
+      var perLayer = best2D.length
+      var usedH = layers * rh
+      var remZ = cH - usedH
+      var topCells2D = [], trl = 0, trw = 0, trh = 0
+
+      if (remZ > 0) {
+        for (var rj = 0; rj < rots.length; rj++) {
+          var rrl = rots[rj][0], rrw = rots[rj][1], rrh = rots[rj][2]
+          if (rrh <= remZ && rrl <= cL && rrw <= cW) {
+            for (var ta = 0; ta < 4; ta++) {
+              var tc = findBest2DOpt(cL, cW, [rrl, rrw], [rrw, rrl], Math.floor(perAttempt / 2))
+              if (tc.length > topCells2D.length) { topCells2D = tc; trl = rrl; trw = rrw; trh = rrh }
+            }
+          }
+        }
+      }
+
+      var total = perLayer * layers + topCells2D.length
+      if (!bestPlan || total > bestPlan.total) {
+        bestPlan = { cells2D: best2D, topCells2D: topCells2D, rl: rl, rw: rw, rh: rh, trl: trl, trw: trw, trh: trh, layers: layers, total: total }
+      }
+    }
+
+    if (!bestPlan || bestPlan.total === 0) return null
+
+    var positions = []
+    for (var z = 0; z < bestPlan.layers; z++) {
+      var zOff = z * bestPlan.rh
+      for (var ci = 0; ci < bestPlan.cells2D.length; ci++) {
+        var c = bestPlan.cells2D[ci]
+        positions.push({
+          x: c.x, y: c.y, z: zOff,
+          l: c.w, w: c.h, h: bestPlan.rh,
+          rotated: !(c.w === bL && c.h === bW && bestPlan.rh === bH)
+        })
+      }
+    }
+
+    if (bestPlan.topCells2D.length > 0 && bestPlan.trl > 0) {
+      var topZ = bestPlan.layers * bestPlan.rh
+      for (var ti = 0; ti < bestPlan.topCells2D.length; ti++) {
+        var tc = bestPlan.topCells2D[ti]
+        positions.push({
+          x: tc.x, y: tc.y, z: topZ,
+          l: tc.w, w: tc.h, h: bestPlan.trh,
+          rotated: !(tc.w === bL && tc.h === bW && bestPlan.trh === bH)
+        })
+      }
+    }
+
+    return { count: positions.length, positions: positions }
+  }
+
+  function calcEnumPackingOptimized(cL, cW, cH, bL, bW, bH, gap, allowRotate, timeLimitMs) {
+    timeLimitMs = timeLimitMs || 10000
+    const rots = getRotations(bL, bW, bH, allowRotate, false)
+
+    var PASSES = 3
+    var perPass = Math.floor(timeLimitMs / PASSES)
+    var bestPass = null
+
+    for (var pass = 0; pass < PASSES; pass++) {
+      var r = onePassOpt(cL, cW, cH, bL, bW, bH, rots, perPass)
+      if (r && (!bestPass || r.count > bestPass.count)) {
+        bestPass = r
+        var maxByVol = Math.floor((cL * cW * cH) / (bL * bW * bH))
+        if (r.count >= maxByVol) break
+      }
+    }
+
+    if (!bestPass || bestPass.count === 0) return null
+
+    var totalVol = bestPass.positions.reduce(function (s, p) { return s + p.l * p.w * p.h }, 0)
+    return {
+      count: bestPass.count,
+      xCount: 0, yCount: 0, zCount: 0,
+      bL: bL, bW: bW, bH: bH,
+      origL: bL, origW: bW, origH: bH,
+      positions: bestPass.positions,
+      utilRate: totalVol / (cL * cW * cH),
+      isRotated: bestPass.positions.some(function(p) { return p.rotated }),
+      gap: gap
+    }
+  }
+
+  return { getRotations, calcPacking, calcMixedPacking, calcMixedPackingOnce, splitSpaceFull, exploreCombinations, calcReverse, calcReverseCompare, fillGaps, calcDSAPLayer, bestSumApprox, canFitCell, buildDSAPGrid, calcEnumPacking, calcEnumPackingOptimized };
 })();

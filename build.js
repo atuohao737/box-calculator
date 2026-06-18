@@ -5,6 +5,7 @@ const path = require('path');
 
 const SRC_DIR = path.resolve(__dirname, 'src');
 const DIST_DIR = path.resolve(__dirname, 'dist');
+const DOCS_DIR = path.resolve(__dirname, 'docs');
 const HTML_FILE = path.join(SRC_DIR, 'index.html');
 const CSS_FILE = path.join(SRC_DIR, 'css', 'style.css');
 const THREE_FILE = path.join(SRC_DIR, 'lib', 'three.min.js');
@@ -12,6 +13,8 @@ const OUTPUT_FILE = path.join(DIST_DIR, 'index.html');
 
 // 确保 dist 目录存在
 if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR, { recursive: true });
+// 确保 docs 目录存在
+if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
 
 // 读取 CSS
 const cssContent = fs.readFileSync(CSS_FILE, 'utf-8');
@@ -48,8 +51,12 @@ html = html.replace(
   }
 );
 
-// 写入输出文件
+// 写入 dist/
 fs.writeFileSync(OUTPUT_FILE, html, 'utf-8');
+
+// 同时同步到 docs/ (GitHub Pages 部署目录)
+const DOCS_OUTPUT = path.join(DOCS_DIR, 'index.html');
+fs.writeFileSync(DOCS_OUTPUT, html, 'utf-8');
 
 const stats = fs.statSync(OUTPUT_FILE);
 const sizeKB = (stats.size / 1024).toFixed(1);

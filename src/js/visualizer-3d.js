@@ -684,11 +684,8 @@ window.Visualizer3D = (function() {
 
     setCamera(crateL, crateW, crateH);
 
-    const mainCount = result.xCount * result.yCount * result.zCount;
-    const tailCount = result.count - mainCount;
-    const tailInfo = tailCount > 0 ? '<br>含旋转填充: <b style="color:#fa8c16">+' + tailCount + ' 个</b>' : '';
     const info = document.getElementById('canvas-info');
-    info.innerHTML = '<b>' + escapeHtml(box.name) + '</b><br>装入: <b>' + result.count + ' 个</b><br>主排列: ' + result.xCount + '×' + result.yCount + '×' + result.zCount + tailInfo + '<br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
+    info.innerHTML = '<b>' + escapeHtml(box.name) + '</b><br>装入: <b>' + result.count + ' 个</b><br>利用率: <b>' + (result.utilRate * 100).toFixed(1) + '%</b>';
     document.getElementById('legend-overlay').style.display = 'none';
     wireframeMode = false;
   }
