@@ -7,6 +7,7 @@ window.App = (function() {
   const S = AppState;
   const PE = PackingEngine;
   const SM = StorageManager;
+  const V2 = Visualizer2D;
   const V3 = Visualizer3D;
   const UI = UIRenderer;
 
@@ -51,8 +52,9 @@ window.App = (function() {
     document.getElementById('mode-single-hint').style.display = mode === 'single' ? 'block' : 'none';
     document.getElementById('mode-mixed-hint').style.display = mode === 'mixed' ? 'block' : 'none';
     document.getElementById('mode-reverse-hint').style.display = mode === 'reverse' ? 'block' : 'none';
-    // 策略选择器仅在混装模式显示
+    // 策略选择器和重试次数仅在混装模式显示
     document.getElementById('strategy-row').style.display = mode === 'mixed' ? 'flex' : 'none';
+    document.getElementById('retry-row').style.display = mode === 'mixed' ? 'flex' : 'none';
     // 反推模式下显示标准木箱库区域
     var reverseCrateArea = document.getElementById('reverse-crate-area');
     var normalCrateArea = document.getElementById('single-crate-area');
@@ -683,13 +685,52 @@ window.App = (function() {
         }
       }, 60);
     }
+
+    if (tab === '2d') {
+      setTimeout(function() {
+        if (!V2.isReady()) V2.init();
+        render2DScene();
+      }, 60);
+    }
+
     if (tab === 'history') UI.renderHistoryList();
+  }
+
+  // 渲染2D俯视图（复用3D场景选择逻辑）
+  function render2DScene() {
+    if (S.batchMode && S.batchResults && S.batchResults.length > 0) {
+      var br = S.batchResults[S.batchActiveCrateIdx];
+      if (br) {
+        if (S.currentMode === 'mixed' && br.mixResult) {
+          V2.render({ positions: br.mixResult.placed || [] },
+            { l: br.mixResult.displayCrateL || br.crate.l, w: br.mixResult.displayCrateW || br.crate.w, gap: 0 });
+        } else if (br.calcResults.length > 0) {
+          var bestCr = null;
+          for (var i = 0; i < br.calcResults.length; i++) {
+            var cr = br.calcResults[i];
+            if (cr.result && (!bestCr || cr.result.count > bestCr.result.count)) bestCr = cr;
+          }
+          if (bestCr && bestCr.result) V2.render(bestCr.result, { l: bestCr.crateL, w: bestCr.crateW, gap: bestCr.gap || 0 });
+        }
+      }
+    } else if (S.currentMode === 'single' && S.calcResults.length > 0) {
+      var cr2 = S.calcResults[S.currentSchemeIdx];
+      if (cr2 && cr2.result) V2.render(cr2.result, { l: cr2.crateL, w: cr2.crateW, gap: cr2.gap || 0 });
+    } else if (S.currentMode === 'mixed' && S.mixResult) {
+      V2.render({ positions: S.mixResult.placed || [] },
+        { l: S.mixResult.displayCrateL || 1020, w: S.mixResult.displayCrateW || 1020, gap: 0 });
+    }
   }
 
   function switchToVisual(idx) {
     S.currentSchemeIdx = idx;
     switchTab('visual');
     document.querySelectorAll('.scheme-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  }
+
+  function switchTo2D(idx) {
+    S.currentSchemeIdx = idx;
+    switchTab('2d');
   }
 
   function switchScheme(idx) {
@@ -1143,9 +1184,11 @@ window.App = (function() {
       updateCrateVol();
       UI.renderHistoryList();
 
-      // 确保初始状态正确（单品模式下隐藏策略选择器）
+      // 确保初始状态正确（单品模式下隐藏混装专属控件）
       var strategyRow = document.getElementById('strategy-row');
       if (strategyRow) strategyRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
+      var retryRow = document.getElementById('retry-row');
+      if (retryRow) retryRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
 
       // 旋转开关联动
       var optRotate = document.getElementById('opt-rotate');
@@ -1183,7 +1226,7 @@ window.App = (function() {
     saveCurrentBoxSpec, deleteBoxSpec, importBoxSpec,
     saveCrateSpec, importCrateSpec, deleteCrateSpec,
     showSpecManager, closeSpecManager, switchSpecTab,
-    calculate, switchTab, switchToVisual, switchScheme,
+    calculate, switchTab, switchToVisual, switchTo2D, switchScheme,
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,

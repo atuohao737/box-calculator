@@ -431,13 +431,12 @@ window.PackingEngine = (function() {
       */
 
       // 优化枚举搜索（DSAP + Monte Carlo）
-      var enumR2 = calcEnumPackingOptimized(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, enumTimeLimit);
+      var enumR2 = calcEnumPackingOptimized(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, enumTimeLimit);
       if (enumR2 && (!bestResult || enumR2.count > bestResult.count ||
           (enumR2.count === bestResult.count && enumR2.utilRate > bestResult.utilRate))) {
         bestResult = enumR2;
       }
     }
-    console.log('[calcPacking最终] count=' + (bestResult ? bestResult.count : 0));
     return bestResult;
   }
 
@@ -1093,7 +1092,7 @@ window.PackingEngine = (function() {
       var enumInfoMap = {};
       for (var ei = 0; ei < boxConfigs.length; ei++) {
         var ebc = boxConfigs[ei];
-        var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
+        var enumR = calcEnumPackingOptimized(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
         if (enumR && enumR.count > 0) {
           enumResults.push({ bc: ebc, idx: ei, count: enumR.count, positions: enumR.positions });
           // 提取最优朝向
@@ -1577,7 +1576,7 @@ window.PackingEngine = (function() {
     return best
   }
 
-  function onePassOpt(cL, cW, cH, bL, bW, bH, rots, timeLimitMs) {
+  function onePassOpt(cL, cW, cH, bL, bW, bH, rots, timeLimitMs, gap) {
     var globalT0 = Date.now()
     var bestPlan = null
 
@@ -1627,11 +1626,11 @@ window.PackingEngine = (function() {
 
     var positions = []
     for (var z = 0; z < bestPlan.layers; z++) {
-      var zOff = z * bestPlan.rh
+      var zOff = gap + z * bestPlan.rh
       for (var ci = 0; ci < bestPlan.cells2D.length; ci++) {
         var c = bestPlan.cells2D[ci]
         positions.push({
-          x: c.x, y: c.y, z: zOff,
+          x: gap + c.x, y: gap + c.y, z: zOff,
           l: c.w, w: c.h, h: bestPlan.rh,
           rotated: !(c.w === bL && c.h === bW && bestPlan.rh === bH)
         })
@@ -1639,11 +1638,11 @@ window.PackingEngine = (function() {
     }
 
     if (bestPlan.topCells2D.length > 0 && bestPlan.trl > 0) {
-      var topZ = bestPlan.layers * bestPlan.rh
+      var topZ = gap + bestPlan.layers * bestPlan.rh
       for (var ti = 0; ti < bestPlan.topCells2D.length; ti++) {
         var tc = bestPlan.topCells2D[ti]
         positions.push({
-          x: tc.x, y: tc.y, z: topZ,
+          x: gap + tc.x, y: gap + tc.y, z: topZ,
           l: tc.w, w: tc.h, h: bestPlan.trh,
           rotated: !(tc.w === bL && tc.h === bW && bestPlan.trh === bH)
         })
@@ -1653,19 +1652,24 @@ window.PackingEngine = (function() {
     return { count: positions.length, positions: positions }
   }
 
-  function calcEnumPackingOptimized(cL, cW, cH, bL, bW, bH, gap, allowRotate, timeLimitMs) {
+  function calcEnumPackingOptimized(cL, cW, cH, bL, bW, bH, gap, allowRotate, keepUpright, timeLimitMs) {
     timeLimitMs = timeLimitMs || 10000
-    const rots = getRotations(bL, bW, bH, allowRotate, false)
+
+    // 扣减留边空隙
+    var iL = cL - gap * 2, iW = cW - gap * 2, iH = cH - gap * 2
+    if (iL <= 0 || iW <= 0 || iH <= 0) return null
+
+    const rots = getRotations(bL, bW, bH, allowRotate, keepUpright || false)
 
     var PASSES = 3
     var perPass = Math.floor(timeLimitMs / PASSES)
     var bestPass = null
 
     for (var pass = 0; pass < PASSES; pass++) {
-      var r = onePassOpt(cL, cW, cH, bL, bW, bH, rots, perPass)
+      var r = onePassOpt(iL, iW, iH, bL, bW, bH, rots, perPass, gap)
       if (r && (!bestPass || r.count > bestPass.count)) {
         bestPass = r
-        var maxByVol = Math.floor((cL * cW * cH) / (bL * bW * bH))
+        var maxByVol = Math.floor((iL * iW * iH) / (bL * bW * bH))
         if (r.count >= maxByVol) break
       }
     }
@@ -1673,13 +1677,14 @@ window.PackingEngine = (function() {
     if (!bestPass || bestPass.count === 0) return null
 
     var totalVol = bestPass.positions.reduce(function (s, p) { return s + p.l * p.w * p.h }, 0)
+    var crateVol = iL * iW * iH
     return {
       count: bestPass.count,
       xCount: 0, yCount: 0, zCount: 0,
       bL: bL, bW: bW, bH: bH,
       origL: bL, origW: bW, origH: bH,
       positions: bestPass.positions,
-      utilRate: totalVol / (cL * cW * cH),
+      utilRate: crateVol > 0 ? totalVol / crateVol : 0,
       isRotated: bestPass.positions.some(function(p) { return p.rotated }),
       gap: gap
     }

@@ -346,6 +346,17 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   .calc-progress-card { padding: 24px 28px; min-width: 240px; }
 }
 
+/* 2D 俯视图 */
+#panel-2d { flex-direction: column; padding: 0; overflow: hidden; }
+#panel-2d.active { display: flex !important; }
+.layer-tabs { display: flex; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--border-default); overflow-x: auto; flex-shrink: 0; }
+.layer-tab { padding: 5px 14px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 12px; cursor: pointer; background: var(--bg-card); color: var(--text-secondary); white-space: nowrap; transition: all 0.15s; }
+.layer-tab:hover { border-color: #1677ff; color: #1677ff; }
+.layer-tab.active { background: #1677ff; color: #fff; border-color: #1677ff; }
+.d2-canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-body); }
+#d2-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+.d2-info { padding: 8px 16px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-muted); text-align: center; flex-shrink: 0; }
+
 @media (max-width: 400px) {
   .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .header-actions { gap: 4px; }
@@ -399,15 +410,15 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
         <div class="form-row">
           <div class="field-group">
             <label>长 L (mm)</label>
-            <input type="number" id="c-l" value="1200" min="1" placeholder="1200" oninput="App.updateCrateVol()">
+            <input type="number" id="c-l" value="1020" min="1" placeholder="1020" oninput="App.updateCrateVol()">
           </div>
           <div class="field-group">
             <label>宽 W (mm)</label>
-            <input type="number" id="c-w" value="1000" min="1" placeholder="1000" oninput="App.updateCrateVol()">
+            <input type="number" id="c-w" value="1020" min="1" placeholder="1020" oninput="App.updateCrateVol()">
           </div>
           <div class="field-group">
             <label>高 H (mm)</label>
-            <input type="number" id="c-h" value="800" min="1" placeholder="800" oninput="App.updateCrateVol()">
+            <input type="number" id="c-h" value="930" min="1" placeholder="930" oninput="App.updateCrateVol()">
           </div>
         </div>
         <div id="crate-vol-display" style="font-size:12px;color:#888;margin-top:4px"></div>
@@ -507,6 +518,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
     <div class="tabs" id="desktop-tabs">
       <div class="tab active" data-tab="results" onclick="App.switchTab('results')">计算结果</div>
       <div class="tab" data-tab="visual" onclick="App.switchTab('visual')">3D 可视化</div>
+      <div class="tab" data-tab="2d" onclick="App.switchTab('2d')">2D 可视化</div>
       <div class="tab" data-tab="history" onclick="App.switchTab('history')">历史记录</div>
     </div>
 
@@ -545,6 +557,18 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
         </div>
       </div>
 
+      <div class="view-panel" id="panel-2d">
+        <div class="layer-tabs" id="layer-tabs">
+          <span style="font-size:12px;color:#bbb">请先计算</span>
+        </div>
+        <div class="d2-canvas-wrap">
+          <canvas id="d2-canvas" width="600" height="600"></canvas>
+        </div>
+        <div class="d2-info" id="d2-info">
+          <span>点击层标签切换视图</span>
+        </div>
+      </div>
+
       <div class="view-panel" id="panel-history">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <h3 style="font-size:14px;font-weight:600;color:#333">历史计算记录</h3>
@@ -562,6 +586,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   <button class="mtab" onclick="App.openSidebar()"><span class="mtab-icon">⚙️</span>参数</button>
   <button class="mtab active" data-mtab="results" onclick="App.switchTab('results')"><span class="mtab-icon">📊</span>结果</button>
   <button class="mtab" data-mtab="visual" onclick="App.switchTab('visual')"><span class="mtab-icon">🎮</span>3D</button>
+  <button class="mtab" data-mtab="2d" onclick="App.switchTab('2d')"><span class="mtab-icon">📐</span>2D</button>
   <button class="mtab" data-mtab="history" onclick="App.switchTab('history')"><span class="mtab-icon">🕰️</span>历史</button>
 </div>
 
@@ -1184,13 +1209,12 @@ window.PackingEngine = (function() {
       */
 
       // 优化枚举搜索（DSAP + Monte Carlo）
-      var enumR2 = calcEnumPackingOptimized(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, enumTimeLimit);
+      var enumR2 = calcEnumPackingOptimized(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, enumTimeLimit);
       if (enumR2 && (!bestResult || enumR2.count > bestResult.count ||
           (enumR2.count === bestResult.count && enumR2.utilRate > bestResult.utilRate))) {
         bestResult = enumR2;
       }
     }
-    console.log('[calcPacking最终] count=' + (bestResult ? bestResult.count : 0));
     return bestResult;
   }
 
@@ -1846,7 +1870,7 @@ window.PackingEngine = (function() {
       var enumInfoMap = {};
       for (var ei = 0; ei < boxConfigs.length; ei++) {
         var ebc = boxConfigs[ei];
-        var enumR = calcEnumPacking(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
+        var enumR = calcEnumPackingOptimized(crateL, crateW, crateH, ebc.box.l, ebc.box.w, ebc.box.h, gap, allowRotate, ebc.box.keepUpright, enumTimeLimit);
         if (enumR && enumR.count > 0) {
           enumResults.push({ bc: ebc, idx: ei, count: enumR.count, positions: enumR.positions });
           // 提取最优朝向
@@ -2330,7 +2354,7 @@ window.PackingEngine = (function() {
     return best
   }
 
-  function onePassOpt(cL, cW, cH, bL, bW, bH, rots, timeLimitMs) {
+  function onePassOpt(cL, cW, cH, bL, bW, bH, rots, timeLimitMs, gap) {
     var globalT0 = Date.now()
     var bestPlan = null
 
@@ -2380,11 +2404,11 @@ window.PackingEngine = (function() {
 
     var positions = []
     for (var z = 0; z < bestPlan.layers; z++) {
-      var zOff = z * bestPlan.rh
+      var zOff = gap + z * bestPlan.rh
       for (var ci = 0; ci < bestPlan.cells2D.length; ci++) {
         var c = bestPlan.cells2D[ci]
         positions.push({
-          x: c.x, y: c.y, z: zOff,
+          x: gap + c.x, y: gap + c.y, z: zOff,
           l: c.w, w: c.h, h: bestPlan.rh,
           rotated: !(c.w === bL && c.h === bW && bestPlan.rh === bH)
         })
@@ -2392,11 +2416,11 @@ window.PackingEngine = (function() {
     }
 
     if (bestPlan.topCells2D.length > 0 && bestPlan.trl > 0) {
-      var topZ = bestPlan.layers * bestPlan.rh
+      var topZ = gap + bestPlan.layers * bestPlan.rh
       for (var ti = 0; ti < bestPlan.topCells2D.length; ti++) {
         var tc = bestPlan.topCells2D[ti]
         positions.push({
-          x: tc.x, y: tc.y, z: topZ,
+          x: gap + tc.x, y: gap + tc.y, z: topZ,
           l: tc.w, w: tc.h, h: bestPlan.trh,
           rotated: !(tc.w === bL && tc.h === bW && bestPlan.trh === bH)
         })
@@ -2406,19 +2430,24 @@ window.PackingEngine = (function() {
     return { count: positions.length, positions: positions }
   }
 
-  function calcEnumPackingOptimized(cL, cW, cH, bL, bW, bH, gap, allowRotate, timeLimitMs) {
+  function calcEnumPackingOptimized(cL, cW, cH, bL, bW, bH, gap, allowRotate, keepUpright, timeLimitMs) {
     timeLimitMs = timeLimitMs || 10000
-    const rots = getRotations(bL, bW, bH, allowRotate, false)
+
+    // 扣减留边空隙
+    var iL = cL - gap * 2, iW = cW - gap * 2, iH = cH - gap * 2
+    if (iL <= 0 || iW <= 0 || iH <= 0) return null
+
+    const rots = getRotations(bL, bW, bH, allowRotate, keepUpright || false)
 
     var PASSES = 3
     var perPass = Math.floor(timeLimitMs / PASSES)
     var bestPass = null
 
     for (var pass = 0; pass < PASSES; pass++) {
-      var r = onePassOpt(cL, cW, cH, bL, bW, bH, rots, perPass)
+      var r = onePassOpt(iL, iW, iH, bL, bW, bH, rots, perPass, gap)
       if (r && (!bestPass || r.count > bestPass.count)) {
         bestPass = r
-        var maxByVol = Math.floor((cL * cW * cH) / (bL * bW * bH))
+        var maxByVol = Math.floor((iL * iW * iH) / (bL * bW * bH))
         if (r.count >= maxByVol) break
       }
     }
@@ -2426,13 +2455,14 @@ window.PackingEngine = (function() {
     if (!bestPass || bestPass.count === 0) return null
 
     var totalVol = bestPass.positions.reduce(function (s, p) { return s + p.l * p.w * p.h }, 0)
+    var crateVol = iL * iW * iH
     return {
       count: bestPass.count,
       xCount: 0, yCount: 0, zCount: 0,
       bL: bL, bW: bW, bH: bH,
       origL: bL, origW: bW, origH: bH,
       positions: bestPass.positions,
-      utilRate: totalVol / (cL * cW * cH),
+      utilRate: crateVol > 0 ? totalVol / crateVol : 0,
       isRotated: bestPass.positions.some(function(p) { return p.rotated }),
       gap: gap
     }
@@ -2503,6 +2533,283 @@ window.StorageManager = (function() {
   }
 
   return { loadBoxSpecs, saveBoxSpecs, loadCrateSpecs, saveCrateSpecs, saveHistory, loadHistoryRaw, deleteHistory, clearHistory };
+})();
+
+</script>
+<script>
+// ============================================================
+// Module: Visualizer2D — 2D 俯视图可视化
+// ============================================================
+window.Visualizer2D = (function() {
+  'use strict';
+  try {
+
+  var canvas, ctx, layerData, activeLayer, crateDims;
+
+  function isReady() {
+    return !!canvas;
+  }
+
+  function init() {
+    canvas = document.getElementById('d2-canvas');
+    if (!canvas) return;
+    ctx = canvas.getContext('2d');
+  }
+
+  function resize(ww, hh) {
+    if (!canvas) return;
+    var w = ww || 600, h = hh || 600;
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  // 按 Z 坐标分组为层
+  function groupByLayer(positions) {
+    var layerMap = {};
+    for (var i = 0; i < positions.length; i++) {
+      var p = positions[i];
+      var zKey = Math.round(p.z);
+      if (!layerMap[zKey]) layerMap[zKey] = [];
+      layerMap[zKey].push(p);
+    }
+    var zKeys = Object.keys(layerMap).map(Number).sort(function(a, b) { return a - b; });
+    return zKeys.map(function(z) {
+      return { z: z, boxes: layerMap[z], count: layerMap[z].length };
+    });
+  }
+
+  // 计算整个装箱方案的包围盒
+  function computeBounds(positions) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < positions.length; i++) {
+      var p = positions[i];
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x + p.l > maxX) maxX = p.x + p.l;
+      if (p.y + p.w > maxY) maxY = p.y + p.w;
+    }
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY,
+      w: maxX - minX, h: maxY - minY };
+  }
+
+  // 渲染指定层
+  function renderLayer(layerIdx) {
+    if (!ctx || !layerData || layerIdx >= layerData.length) return;
+    activeLayer = layerIdx;
+    var layer = layerData[layerIdx];
+    var positions = layer.boxes;
+
+    var wrap = canvas.parentElement;
+    var wrapW = wrap ? wrap.clientWidth : 600;
+    var wrapH = wrap ? wrap.clientHeight : 600;
+
+    // 使用木箱尺寸确定画布比例
+    var cL = crateDims ? crateDims.l : 0;
+    var cW = crateDims ? crateDims.w : 0;
+    var gap = crateDims ? (crateDims.gap || 0) : 0;
+    if (cL <= 0 || cW <= 0) {
+      var b = computeBounds(positions);
+      cL = b.w; cW = b.h;
+    }
+
+    var padding = 60;
+    var availW = wrapW - padding * 2;
+    var availH = wrapH - padding * 2;
+    if (availW < 200) availW = 560;
+    if (availH < 200) availH = 560;
+
+    var scale = Math.min(availW / cL, availH / cW);
+
+    var cw = Math.max(Math.ceil(cL * scale) + padding * 2, 300);
+    var ch = Math.max(Math.ceil(cW * scale) + padding * 2, 300);
+    canvas.width = cw;
+    canvas.height = ch;
+    ctx.clearRect(0, 0, cw, ch);
+
+    var offsetX = (cw - cL * scale) / 2;
+    var offsetY = (ch - cW * scale) / 2;
+
+    // 木箱外框填充（浅灰底色）
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(offsetX, offsetY, cL * scale, cW * scale);
+
+    // 木箱外框（实线，深色）
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(offsetX, offsetY, cL * scale, cW * scale);
+
+    // 尺寸标注（外框边缘）
+    ctx.fillStyle = '#888';
+    ctx.font = 'bold 13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(cL + ' mm', offsetX + cL * scale / 2, offsetY - 6);
+    ctx.save();
+    ctx.translate(offsetX - 8, offsetY + cW * scale / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(cW + ' mm', 0, 0);
+    ctx.restore();
+
+    // gap 标记线（如果 gap > 0）
+    if (gap > 0) {
+      ctx.strokeStyle = '#ff9800';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.strokeRect(offsetX + gap * scale, offsetY + gap * scale,
+        (cL - gap * 2) * scale, (cW - gap * 2) * scale);
+      ctx.setLineDash([]);
+    }
+
+    // 为每种纸箱颜色归类（通过 l,w,h 组合识别同一类型）
+    var typeMap = {};
+    var typeOrder = [];
+    for (var i = 0; i < positions.length; i++) {
+      var p = positions[i];
+      var key = p.l + 'x' + p.w + 'x' + p.h;
+      if (!typeMap[key]) {
+        typeMap[key] = { l: p.l, w: p.w, h: p.h, color: getColorForType(typeOrder.length), count: 0 };
+        typeOrder.push(key);
+      }
+      typeMap[key].count++;
+    }
+
+    // 绘制每个纸箱
+    for (var i = 0; i < positions.length; i++) {
+      var p = positions[i];
+      var key = p.l + 'x' + p.w + 'x' + p.h;
+      var typeInfo = typeMap[key];
+
+      var rx = offsetX + p.x * scale;
+      var ry = offsetY + (cW - p.y - p.w) * scale;
+      var rw = p.l * scale;
+      var rh = p.w * scale;
+
+      ctx.fillStyle = typeInfo.color;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(rx + 1, ry + 1, rw - 2, rh - 2);
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = typeInfo.color;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      var fontSize = Math.max(10, Math.min(14, rw / 4.5));
+      if (rw > 35 && rh > 25) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold ' + fontSize + 'px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 2;
+        ctx.fillText(p.l + '×' + p.w, rx + rw / 2, ry + rh / 2);
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    renderLegend(typeOrder, typeMap);
+  }
+
+  function getColorForType(idx) {
+    var colors = ['#4f9cf9','#52c41a','#fa8c16','#f759ab','#722ed1','#13c2c2','#ff4d4f','#a0d911'];
+    return colors[idx % colors.length];
+  }
+
+  function renderLegend(typeOrder, typeMap) {
+    var x = 10, y = 10;
+    for (var i = 0; i < typeOrder.length; i++) {
+      var key = typeOrder[i];
+      var info = typeMap[key];
+      ctx.fillStyle = info.color;
+      ctx.fillRect(x, y + i * 22, 14, 14);
+      ctx.fillStyle = '#333';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(info.l + '×' + info.w + '×' + info.h + ' ×' + info.count, x + 18, y + i * 22 + 2);
+    }
+  }
+
+  // 主渲染入口
+  function render(result, crateInfo) {
+    if (!result || !result.positions || result.positions.length === 0) {
+      clearCanvas();
+      return;
+    }
+
+    init();
+    var positions = result.positions;
+    layerData = groupByLayer(positions);
+    crateDims = crateInfo || { l: 0, w: 0, gap: 0 };
+
+    // 渲染层选择器
+    var layerTabsEl = document.getElementById('layer-tabs');
+    if (layerTabsEl) {
+      layerTabsEl.innerHTML = '';
+      for (var i = 0; i < layerData.length; i++) {
+        var ld = layerData[i];
+        var tab = document.createElement('button');
+        tab.className = 'layer-tab';
+        tab.textContent = ld.z + 'mm (' + ld.count + '个)';
+        tab.setAttribute('data-layer', i);
+        tab.onclick = function() {
+          var idx = parseInt(this.getAttribute('data-layer'));
+          document.querySelectorAll('.layer-tab').forEach(function(t) { t.classList.remove('active'); });
+          this.classList.add('active');
+          renderLayer(idx);
+          updateLayerInfo(idx);
+        };
+        layerTabsEl.appendChild(tab);
+      }
+    }
+
+    // 渲染第一层
+    if (layerData.length > 0) {
+      var firstTab = layerTabsEl.querySelector('.layer-tab');
+      if (firstTab) firstTab.classList.add('active');
+      renderLayer(0);
+      updateLayerInfo(0);
+    }
+
+    // 更新信息栏
+    var infoEl = document.getElementById('d2-info');
+    if (infoEl && layerData.length > 0) {
+      infoEl.innerHTML = '共 <b>' + layerData.length + '</b> 层 · 总计 <b>' + positions.length + '</b> 个纸箱';
+    }
+  }
+
+  function updateLayerInfo(idx) {
+    var infoEl = document.getElementById('d2-info');
+    if (!infoEl || !layerData || idx >= layerData.length) return;
+    var layer = layerData[idx];
+    infoEl.innerHTML = '第 <b>' + (idx + 1) + '</b> 层 · Z=' + layer.z + 'mm · <b>' + layer.count + '</b> 个纸箱 · 共 ' + layerData.length + ' 层';
+  }
+
+  function clearCanvas() {
+    if (!ctx) return;
+    canvas.width = canvas.width;
+    var layerTabsEl = document.getElementById('layer-tabs');
+    if (layerTabsEl) layerTabsEl.innerHTML = '<span style="font-size:12px;color:#bbb">请先计算</span>';
+    var infoEl = document.getElementById('d2-info');
+    if (infoEl) infoEl.innerHTML = '<span>点击层标签切换视图</span>';
+  }
+
+  function resizeIfNeeded() {
+    if (!layerData || layerData.length === 0) return;
+    if (activeLayer !== undefined) renderLayer(activeLayer);
+  }
+
+  return {
+    isReady: isReady, init: init, render: render,
+    clearCanvas: clearCanvas, resizeIfNeeded: resizeIfNeeded
+  };
+
+  } catch(e) {
+    console.error('[Visualizer2D] 模块初始化失败:', e);
+    return { isReady: function(){return false}, init: function(){}, render: function(){},
+      clearCanvas: function(){}, resizeIfNeeded: function(){} };
+  }
 })();
 
 </script>
@@ -3528,8 +3835,9 @@ window.UIRenderer = (function() {
                   '</div>' +
                   '<span style="font-size:10px;font-weight:600;color:' + boxUtilColor + ';flex-shrink:0">' + boxUtilPct + '%</span>' +
                 '</div>' +
-                // 第三列：3D按钮
+                // 第三列：3D/2D按钮
                 '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
+                '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">2D</button>' +
               '</div>';
           }
         });
@@ -3634,6 +3942,26 @@ window.UIRenderer = (function() {
         }
       }
     })(0);
+  }
+
+  function selectBatchBox2D(crateIdx, boxIdx) {
+    var s = AppState;
+    s.batchActiveCrateIdx = crateIdx;
+    s.currentSchemeIdx = boxIdx;
+    var br = s.batchResults[crateIdx];
+    if (!br || !br.calcResults || !br.calcResults[boxIdx]) return;
+    renderBatchResults();
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === '2d'); });
+    document.querySelectorAll('.view-panel').forEach(function(p) { p.classList.remove('active'); });
+    var panel2d = document.getElementById('panel-2d');
+    if (panel2d) panel2d.classList.add('active');
+    document.querySelectorAll('.mtab').forEach(function(t) { t.classList.toggle('active', t.dataset.mtab === '2d'); });
+    var V2 = Visualizer2D;
+    if (V2 && !V2.isReady()) V2.init();
+    setTimeout(function() {
+      var cr = br.calcResults[boxIdx];
+      if (cr && cr.result && V2) V2.render(cr.result, { l: cr.crateL, w: cr.crateW, gap: cr.gap || 0 });
+    }, 60);
   }
 
   // ============================================================
@@ -3804,7 +4132,10 @@ window.UIRenderer = (function() {
         '<div class="arr-row"><span class="arr-label">纸箱尺寸（实际）</span><span class="arr-val">' + result.bL + '×' + result.bW + '×' + result.bH + ' mm</span></div>' +
         '<div class="arr-row"><span class="arr-label">木箱内容积</span><span class="arr-val">' + (crateL * crateW * crateH / 1e9).toFixed(3) + ' m³</span></div>' +
       '</div>' +
-      '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+      '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">' +
+        '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchToVisual(' + idx + ')" title="查看3D布局">🎮 3D</button>' +
+        '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchTo2D(' + idx + ')" title="查看俯视图">📐 2D</button>' +
+      '</div>' +
     '</div>';
   }
 
@@ -3874,7 +4205,10 @@ window.UIRenderer = (function() {
           weightWarnMixed +
           '<div class="mix-breakdown" style="margin-top:12px"><div class="mix-breakdown-header">各类纸箱明细</div>' + breakdownRows + '</div>' +
           unmetHtml + strategyHint +
-          '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+          '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">' +
+            '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchToVisual(0)" title="查看3D布局">🎮 3D</button>' +
+            '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchTab(\'2d\')" title="查看俯视图">📐 2D</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
   }
@@ -4022,6 +4356,7 @@ window.App = (function() {
   const S = AppState;
   const PE = PackingEngine;
   const SM = StorageManager;
+  const V2 = Visualizer2D;
   const V3 = Visualizer3D;
   const UI = UIRenderer;
 
@@ -4066,8 +4401,9 @@ window.App = (function() {
     document.getElementById('mode-single-hint').style.display = mode === 'single' ? 'block' : 'none';
     document.getElementById('mode-mixed-hint').style.display = mode === 'mixed' ? 'block' : 'none';
     document.getElementById('mode-reverse-hint').style.display = mode === 'reverse' ? 'block' : 'none';
-    // 策略选择器仅在混装模式显示
+    // 策略选择器和重试次数仅在混装模式显示
     document.getElementById('strategy-row').style.display = mode === 'mixed' ? 'flex' : 'none';
+    document.getElementById('retry-row').style.display = mode === 'mixed' ? 'flex' : 'none';
     // 反推模式下显示标准木箱库区域
     var reverseCrateArea = document.getElementById('reverse-crate-area');
     var normalCrateArea = document.getElementById('single-crate-area');
@@ -4698,13 +5034,52 @@ window.App = (function() {
         }
       }, 60);
     }
+
+    if (tab === '2d') {
+      setTimeout(function() {
+        if (!V2.isReady()) V2.init();
+        render2DScene();
+      }, 60);
+    }
+
     if (tab === 'history') UI.renderHistoryList();
+  }
+
+  // 渲染2D俯视图（复用3D场景选择逻辑）
+  function render2DScene() {
+    if (S.batchMode && S.batchResults && S.batchResults.length > 0) {
+      var br = S.batchResults[S.batchActiveCrateIdx];
+      if (br) {
+        if (S.currentMode === 'mixed' && br.mixResult) {
+          V2.render({ positions: br.mixResult.placed || [] },
+            { l: br.mixResult.displayCrateL || br.crate.l, w: br.mixResult.displayCrateW || br.crate.w, gap: 0 });
+        } else if (br.calcResults.length > 0) {
+          var bestCr = null;
+          for (var i = 0; i < br.calcResults.length; i++) {
+            var cr = br.calcResults[i];
+            if (cr.result && (!bestCr || cr.result.count > bestCr.result.count)) bestCr = cr;
+          }
+          if (bestCr && bestCr.result) V2.render(bestCr.result, { l: bestCr.crateL, w: bestCr.crateW, gap: bestCr.gap || 0 });
+        }
+      }
+    } else if (S.currentMode === 'single' && S.calcResults.length > 0) {
+      var cr2 = S.calcResults[S.currentSchemeIdx];
+      if (cr2 && cr2.result) V2.render(cr2.result, { l: cr2.crateL, w: cr2.crateW, gap: cr2.gap || 0 });
+    } else if (S.currentMode === 'mixed' && S.mixResult) {
+      V2.render({ positions: S.mixResult.placed || [] },
+        { l: S.mixResult.displayCrateL || 1020, w: S.mixResult.displayCrateW || 1020, gap: 0 });
+    }
   }
 
   function switchToVisual(idx) {
     S.currentSchemeIdx = idx;
     switchTab('visual');
     document.querySelectorAll('.scheme-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  }
+
+  function switchTo2D(idx) {
+    S.currentSchemeIdx = idx;
+    switchTab('2d');
   }
 
   function switchScheme(idx) {
@@ -5158,9 +5533,11 @@ window.App = (function() {
       updateCrateVol();
       UI.renderHistoryList();
 
-      // 确保初始状态正确（单品模式下隐藏策略选择器）
+      // 确保初始状态正确（单品模式下隐藏混装专属控件）
       var strategyRow = document.getElementById('strategy-row');
       if (strategyRow) strategyRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
+      var retryRow = document.getElementById('retry-row');
+      if (retryRow) retryRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
 
       // 旋转开关联动
       var optRotate = document.getElementById('opt-rotate');
@@ -5198,7 +5575,7 @@ window.App = (function() {
     saveCurrentBoxSpec, deleteBoxSpec, importBoxSpec,
     saveCrateSpec, importCrateSpec, deleteCrateSpec,
     showSpecManager, closeSpecManager, switchSpecTab,
-    calculate, switchTab, switchToVisual, switchScheme,
+    calculate, switchTab, switchToVisual, switchTo2D, switchScheme,
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,

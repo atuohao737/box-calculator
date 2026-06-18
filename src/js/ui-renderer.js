@@ -208,8 +208,9 @@ window.UIRenderer = (function() {
                   '</div>' +
                   '<span style="font-size:10px;font-weight:600;color:' + boxUtilColor + ';flex-shrink:0">' + boxUtilPct + '%</span>' +
                 '</div>' +
-                // 第三列：3D按钮
+                // 第三列：3D/2D按钮
                 '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
+                '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">2D</button>' +
               '</div>';
           }
         });
@@ -314,6 +315,26 @@ window.UIRenderer = (function() {
         }
       }
     })(0);
+  }
+
+  function selectBatchBox2D(crateIdx, boxIdx) {
+    var s = AppState;
+    s.batchActiveCrateIdx = crateIdx;
+    s.currentSchemeIdx = boxIdx;
+    var br = s.batchResults[crateIdx];
+    if (!br || !br.calcResults || !br.calcResults[boxIdx]) return;
+    renderBatchResults();
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === '2d'); });
+    document.querySelectorAll('.view-panel').forEach(function(p) { p.classList.remove('active'); });
+    var panel2d = document.getElementById('panel-2d');
+    if (panel2d) panel2d.classList.add('active');
+    document.querySelectorAll('.mtab').forEach(function(t) { t.classList.toggle('active', t.dataset.mtab === '2d'); });
+    var V2 = Visualizer2D;
+    if (V2 && !V2.isReady()) V2.init();
+    setTimeout(function() {
+      var cr = br.calcResults[boxIdx];
+      if (cr && cr.result && V2) V2.render(cr.result, { l: cr.crateL, w: cr.crateW, gap: cr.gap || 0 });
+    }, 60);
   }
 
   // ============================================================
@@ -484,7 +505,10 @@ window.UIRenderer = (function() {
         '<div class="arr-row"><span class="arr-label">纸箱尺寸（实际）</span><span class="arr-val">' + result.bL + '×' + result.bW + '×' + result.bH + ' mm</span></div>' +
         '<div class="arr-row"><span class="arr-label">木箱内容积</span><span class="arr-val">' + (crateL * crateW * crateH / 1e9).toFixed(3) + ' m³</span></div>' +
       '</div>' +
-      '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+      '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">' +
+        '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchToVisual(' + idx + ')" title="查看3D布局">🎮 3D</button>' +
+        '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchTo2D(' + idx + ')" title="查看俯视图">📐 2D</button>' +
+      '</div>' +
     '</div>';
   }
 
@@ -554,7 +578,10 @@ window.UIRenderer = (function() {
           weightWarnMixed +
           '<div class="mix-breakdown" style="margin-top:12px"><div class="mix-breakdown-header">各类纸箱明细</div>' + breakdownRows + '</div>' +
           unmetHtml + strategyHint +
-          '<div style="margin-top:8px;font-size:11px;color:#aaa;text-align:right">点击查看3D视图 →</div>' +
+          '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">' +
+            '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchToVisual(0)" title="查看3D布局">🎮 3D</button>' +
+            '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchTab(\'2d\')" title="查看俯视图">📐 2D</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
   }

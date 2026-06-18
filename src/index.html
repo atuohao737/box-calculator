@@ -53,15 +53,15 @@
         <div class="form-row">
           <div class="field-group">
             <label>长 L (mm)</label>
-            <input type="number" id="c-l" value="1200" min="1" placeholder="1200" oninput="App.updateCrateVol()">
+            <input type="number" id="c-l" value="1020" min="1" placeholder="1020" oninput="App.updateCrateVol()">
           </div>
           <div class="field-group">
             <label>宽 W (mm)</label>
-            <input type="number" id="c-w" value="1000" min="1" placeholder="1000" oninput="App.updateCrateVol()">
+            <input type="number" id="c-w" value="1020" min="1" placeholder="1020" oninput="App.updateCrateVol()">
           </div>
           <div class="field-group">
             <label>高 H (mm)</label>
-            <input type="number" id="c-h" value="800" min="1" placeholder="800" oninput="App.updateCrateVol()">
+            <input type="number" id="c-h" value="930" min="1" placeholder="930" oninput="App.updateCrateVol()">
           </div>
         </div>
         <div id="crate-vol-display" style="font-size:12px;color:#888;margin-top:4px"></div>
@@ -161,6 +161,7 @@
     <div class="tabs" id="desktop-tabs">
       <div class="tab active" data-tab="results" onclick="App.switchTab('results')">计算结果</div>
       <div class="tab" data-tab="visual" onclick="App.switchTab('visual')">3D 可视化</div>
+      <div class="tab" data-tab="2d" onclick="App.switchTab('2d')">2D 可视化</div>
       <div class="tab" data-tab="history" onclick="App.switchTab('history')">历史记录</div>
     </div>
 
@@ -199,6 +200,18 @@
         </div>
       </div>
 
+      <div class="view-panel" id="panel-2d">
+        <div class="layer-tabs" id="layer-tabs">
+          <span style="font-size:12px;color:#bbb">请先计算</span>
+        </div>
+        <div class="d2-canvas-wrap">
+          <canvas id="d2-canvas" width="600" height="600"></canvas>
+        </div>
+        <div class="d2-info" id="d2-info">
+          <span>点击层标签切换视图</span>
+        </div>
+      </div>
+
       <div class="view-panel" id="panel-history">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <h3 style="font-size:14px;font-weight:600;color:#333">历史计算记录</h3>
@@ -216,6 +229,7 @@
   <button class="mtab" onclick="App.openSidebar()"><span class="mtab-icon">⚙️</span>参数</button>
   <button class="mtab active" data-mtab="results" onclick="App.switchTab('results')"><span class="mtab-icon">📊</span>结果</button>
   <button class="mtab" data-mtab="visual" onclick="App.switchTab('visual')"><span class="mtab-icon">🎮</span>3D</button>
+  <button class="mtab" data-mtab="2d" onclick="App.switchTab('2d')"><span class="mtab-icon">📐</span>2D</button>
   <button class="mtab" data-mtab="history" onclick="App.switchTab('history')"><span class="mtab-icon">🕰️</span>历史</button>
 </div>
 
@@ -225,6 +239,7 @@
 <script src="js/app-state.js"></script>
 <script src="js/packing-engine.js"></script>
 <script src="js/storage-manager.js"></script>
+<script src="js/visualizer-2d.js"></script>
 <script src="js/visualizer-3d.js"></script>
 <script src="js/ui-renderer.js"></script>
 <script src="js/app.js"></script>

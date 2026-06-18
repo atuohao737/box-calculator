@@ -340,6 +340,17 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   .calc-progress-card { padding: 24px 28px; min-width: 240px; }
 }
 
+/* 2D 俯视图 */
+#panel-2d { flex-direction: column; padding: 0; overflow: hidden; }
+#panel-2d.active { display: flex !important; }
+.layer-tabs { display: flex; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--border-default); overflow-x: auto; flex-shrink: 0; }
+.layer-tab { padding: 5px 14px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 12px; cursor: pointer; background: var(--bg-card); color: var(--text-secondary); white-space: nowrap; transition: all 0.15s; }
+.layer-tab:hover { border-color: #1677ff; color: #1677ff; }
+.layer-tab.active { background: #1677ff; color: #fff; border-color: #1677ff; }
+.d2-canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-body); }
+#d2-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+.d2-info { padding: 8px 16px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-muted); text-align: center; flex-shrink: 0; }
+
 @media (max-width: 400px) {
   .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .header-actions { gap: 4px; }
