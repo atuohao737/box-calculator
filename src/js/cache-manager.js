@@ -39,8 +39,10 @@ window.CacheManager = (function() {
         for (var i = 0; i < remove.length; i++) delete data[remove[i]];
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return true;
     } catch(e) {
       console.warn('[CacheManager] 存储失败:', e.message);
+      return false;
     }
   }
 
@@ -64,8 +66,7 @@ window.CacheManager = (function() {
       zCount: result.zCount || 0,
       ts: Date.now()
     };
-    saveAll(data);
-    return true;
+    return saveAll(data);
   }
 
   // 查询缓存

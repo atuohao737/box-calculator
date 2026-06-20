@@ -19,7 +19,7 @@ window.App = (function() {
     var modal = document.getElementById('cache-modal');
     if (!modal) return;
     modal.style.display = 'flex';
-    // 填充分页名称 + 尺寸到标题
+    // 填充木箱名称 + 尺寸到标题
     var crate = _cachePending ? _cachePending.crateList[0] : null;
     var crateSizeText = crate ? (Math.round(crate.l) + ' x ' + Math.round(crate.w) + ' x ' + Math.round(crate.h)) : '该木箱';
     var titleEl = modal.querySelector('.cache-modal-title');
@@ -38,10 +38,33 @@ window.App = (function() {
           '<td>' + dimText + '</td>' +
           '<td>' + r.count + ' 个</td>' +
           '<td>' + (r.utilRate * 100).toFixed(1) + '%</td>' +
+          '<td><button class="cache-del-btn" onclick="event.stopPropagation();App.removeCacheEntry(' + i + ')" title="删除此缓存">×</button></td>' +
         '</tr>';
     }
     var tbody = document.getElementById('cache-modal-tbody');
     if (tbody) tbody.innerHTML = rowsHtml;
+  }
+
+  function removeCacheEntry(idx) {
+    if (!_cachePending || !_cachePending.cachedBoxes || !_cachePending.cachedBoxes[idx]) return;
+    var cb = _cachePending.cachedBoxes[idx];
+    var crate = _cachePending.crateList[0];
+    var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+    var allowRotate = document.getElementById('opt-rotate').checked;
+    var keepUpright = !!cb.box.keepUpright;
+    CM.remove(crate.l, crate.w, crate.h, cb.box.l, cb.box.w, cb.box.h, gap, allowRotate, keepUpright);
+    _cachePending.cachedBoxes.splice(idx, 1);
+    if (_cachePending.cachedBoxes.length === 0) {
+      // 全部删完 → 关闭弹窗，自动重算
+      closeCacheModal();
+      showCalcProgress(_cachePending.modeLabel + ' · 准备计算...');
+      var p = _cachePending;
+      setTimeout(function() {
+        _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
+      }, 60);
+    } else {
+      showCacheModal(_cachePending.cachedBoxes);
+    }
   }
 
   function closeCacheModal() {
@@ -50,26 +73,21 @@ window.App = (function() {
   }
 
   function useCachedResult() {
-    var p = _cachePending;
-    _cachePending = null;
+    if (!_cachePending) return;
     document.getElementById('cache-modal').style.display = 'none';
-    if (!p) return;
-    // 标记哪些纸箱使用缓存
-    _cachePending = p;
     _cachePending.useCache = true;
-    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    showCalcProgress(_cachePending.modeLabel + ' · 准备计算...');
+    var p = _cachePending;
     setTimeout(function() {
       _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
     }, 60);
   }
 
   function recalcFromCache() {
-    var p = _cachePending;
-    _cachePending = null;
+    if (!_cachePending) return;
     document.getElementById('cache-modal').style.display = 'none';
-    if (!p) return;
-    // 不标记使用缓存，全部重新计算
-    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    showCalcProgress(_cachePending.modeLabel + ' · 准备计算...');
+    var p = _cachePending;
     setTimeout(function() {
       _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
     }, 60);
@@ -664,8 +682,21 @@ window.App = (function() {
           finishCrate([], mixBest);
         }
       } catch(e) {
-        hideCalcProgress();
         console.error('[App] 计算出错:', e);
+        var crateName = crateList[ci] ? crateList[ci].name || (ci + 1) : (ci + 1);
+        UI.showError('木箱 "' + UI.escapeHtml(crateName) + '" 计算失败: ' + e.message);
+        S.batchResults.push({
+          crate: crateList[ci],
+          calcResults: [],
+          mixResult: null,
+          error: e.message
+        });
+        ci++;
+        if (ci < crateList.length) {
+          setTimeout(processNextCrate, 0);
+        } else {
+          finishCalc();
+        }
       }
     }
 
@@ -1323,8 +1354,8 @@ window.App = (function() {
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
     markOptimal: function(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result) {
-      CM.save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result);
-      UI.flashMsg('✅ 已标记为最优排布，下次计算可直接复用');
+      var saved3 = CM.save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result);
+      UI.flashMsg(saved3 ? '✅ 已标记为最优排布，下次计算可直接复用' : '⚠️ 缓存空间不足，标记失败');
     },
     markOptimalBatch: function(crateIdx, boxIdx) {
       var br = S.batchResults[crateIdx];
@@ -1334,8 +1365,8 @@ window.App = (function() {
       var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
       var allowRotate = document.getElementById('opt-rotate').checked;
       var keepUpright = !!cr.box.keepUpright;
-      CM.save(br.crate.l, br.crate.w, br.crate.h, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
-      UI.flashMsg('✅ 已标记为最优排布');
+      var saved = CM.save(br.crate.l, br.crate.w, br.crate.h, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
+      UI.flashMsg(saved ? '✅ 已标记为最优排布' : '⚠️ 缓存空间不足，标记失败');
     },
     markSingleOptimal: function(idx) {
       var cr = S.calcResults[idx];
@@ -1343,10 +1374,10 @@ window.App = (function() {
       var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
       var allowRotate = document.getElementById('opt-rotate').checked;
       var keepUpright = !!cr.box.keepUpright;
-      CM.save(cr.crateL, cr.crateW, cr.crateH, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
-      UI.flashMsg('✅ 已标记为最优排布');
+      var saved2 = CM.save(cr.crateL, cr.crateW, cr.crateH, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
+      UI.flashMsg(saved2 ? '✅ 已标记为最优排布' : '⚠️ 缓存空间不足，标记失败');
     },
-    useCachedResult, recalcFromCache, closeCacheModal,
+    useCachedResult, recalcFromCache, closeCacheModal, removeCacheEntry,
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
@@ -1374,7 +1405,7 @@ window.App = (function() {
       batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, markOptimalBatch: function(){}, toggleBoxEnabled: function(){},
       addReverseCrate: function(){}, removeReverseCrate: function(){}, updateReverseCrateName: function(){}, updateReverseCrateDim: function(){},
       batchImportReverseCrates: function(){}, selectReverseCrate: function(){},
-      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, markOptimal: function(){}, markSingleOptimal: function(){}
+      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, removeCacheEntry: function(){}, markOptimal: function(){}, markSingleOptimal: function(){}
     };
   }
 })();
