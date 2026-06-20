@@ -195,10 +195,11 @@ window.UIRenderer = (function() {
             var boxName = escapeHtml(cr.box.name);
             breakdownHtml +=
               '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:#fafafa">' +
-                // 左侧：纸箱名 + 颜色点
+                // 左侧：纸箱名 + 颜色点 + 最佳标记
                 '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">' +
                   '<span class="color-dot" style="background:' + cr.box.color + ';width:10px;height:10px;flex-shrink:0;border-radius:50%"></span>' +
                   '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">' + boxName + '</span>' +
+                  (isBest ? '<span style="font-size:12px;flex-shrink:0" title="最佳装箱">⭐</span>' : '') +
                 '</div>' +
                 // 数量
                 '<span style="font-weight:700;color:#1677ff;min-width:32px;text-align:center">' + cr.result.count + '</span>' +
@@ -215,7 +216,6 @@ window.UIRenderer = (function() {
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">🎮</button>' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">📐</button>' +
                 '</div>' +
-                (isBest ? '<span style="font-size:12px;flex-shrink:0" title="最佳装箱">⭐</span>' : '') +
               '</div>';
           }
         });
@@ -323,6 +323,7 @@ window.UIRenderer = (function() {
   }
 
   function selectBatchBox2D(crateIdx, boxIdx) {
+    try {
     var s = AppState;
     s.batchActiveCrateIdx = crateIdx;
     s.currentSchemeIdx = boxIdx;
@@ -339,7 +340,8 @@ window.UIRenderer = (function() {
     setTimeout(function() {
       var cr = br.calcResults[boxIdx];
       if (cr && cr.result && V2) V2.render(cr.result, { l: cr.crateL, w: cr.crateW, gap: cr.gap || 0 });
-    }, 60);
+    }, 100);
+    } catch(e) { console.error('[selectBatchBox2D]', e); }
   }
 
   // ============================================================
@@ -709,7 +711,7 @@ window.UIRenderer = (function() {
     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 1800);
   }
 
-  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, selectBatchBox, renderReverseResults, selectReverseCrate, escapeHtml };
+  return { renderBoxList, renderResults, renderSchemaTabs, renderHistoryList, renderSpecManagerContent, showError, flashMsg, renderBatchResults, selectBatchCrate, selectBatchBox, selectBatchBox2D, renderReverseResults, selectReverseCrate, escapeHtml };
   } catch(e) {
     console.error('[UIRenderer] 模块初始化失败:', e.message);
     var noop = function() {};
@@ -717,7 +719,7 @@ window.UIRenderer = (function() {
       renderBoxList: noop, renderResults: noop, renderSchemaTabs: noop,
       renderHistoryList: noop, renderSpecManagerContent: noop,
       showError: function(m) { console.error(m); }, flashMsg: function(m) { console.log(m); },
-      renderBatchResults: noop, selectBatchCrate: noop,
+      renderBatchResults: noop, selectBatchCrate: noop, selectBatchBox: noop, selectBatchBox2D: noop,
       renderReverseResults: noop, selectReverseCrate: noop
     };
   }
