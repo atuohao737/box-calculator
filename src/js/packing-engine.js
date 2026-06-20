@@ -1759,23 +1759,73 @@ window.PackingEngine = (function() {
 
           // 生成最后一个部分箱（如果有余数）
           if (lastDomCount > 0) {
-            var lastPrePlaced = domPackR.positions.slice(0, lastDomCount);
-            var lastMixResult = null;
+            var lastCrateBuilt = false;
+
+            // 优先尝试：将主导+次要一起交给 calcMixedPacking
             if (secondaryConfigs.length > 0) {
-              var lastMixConfigs = [];
+              var needSecondary = false;
               for (var lmi = 0; lmi < secondaryConfigs.length; lmi++) {
-                var rrq = remainingSecondary[lmi];
-                if (rrq >= 1e8) {
-                  lastMixConfigs.push({ box: secondaryConfigs[lmi].box, qty: null });
-                } else if (rrq > 0) {
-                  lastMixConfigs.push({ box: secondaryConfigs[lmi].box, qty: Math.ceil(rrq) });
+                if (remainingSecondary[lmi] > 0 || remainingSecondary[lmi] >= 1e8) { needSecondary = true; break; }
+              }
+              if (needSecondary) {
+                var lastAllConfigs = [{ box: domBC.box, qty: lastDomCount }];
+                for (var lmi2 = 0; lmi2 < secondaryConfigs.length; lmi2++) {
+                  var rrq = remainingSecondary[lmi2];
+                  if (rrq >= 1e8) {
+                    lastAllConfigs.push({ box: secondaryConfigs[lmi2].box, qty: null });
+                  } else if (rrq > 0) {
+                    lastAllConfigs.push({ box: secondaryConfigs[lmi2].box, qty: Math.ceil(rrq) });
+                  }
+                }
+                var fastOpt = { enumTimeLimit: options ? Math.min(options.enumTimeLimit || 5000, 5000) : 5000 };
+                var lastFullResult = calcMixedPacking(c.l, c.w, c.h, lastAllConfigs, gap, allowRotate, 1, 'count', fastOpt);
+
+                if (lastFullResult && lastFullResult.placed && lastFullResult.placed.length > 0) {
+                  var lb = lastFullResult.placed.map(function(p) {
+                    var lcfg = lastAllConfigs[p.boxIdx];
+                    return { boxIdx: p.boxIdx, box: lcfg ? lcfg.box : domBC.box, pos: p };
+                  });
+                  var lbVol = lb.reduce(function(s, b) { return s + b.pos.l * b.pos.w * b.pos.h; }, 0);
+                  var liL = c.l - gap * 2, liW = c.w - gap * 2, liH = c.h - gap * 2;
+                  var lfVol = liL * liW * liH;
+                  var ltw = lb.reduce(function(s, b) { return s + (parseFloat(b.box.weight) || 0); }, 0);
+                  crates.push({
+                    crate: { l: c.l, w: c.w, h: c.h },
+                    boxes: lb,
+                    totalCount: lb.length,
+                    utilRate: lfVol > 0 ? lbVol / lfVol : 0,
+                    totalWeight: ltw,
+                    maxWeight: c.maxWeight || 0,
+                    weightRate: c.maxWeight > 0 ? ltw / c.maxWeight : 0,
+                    displayCrateL: c.l,
+                    displayCrateW: c.w,
+                    displayCrateH: c.h
+                  });
+                  lastCrateBuilt = true;
                 }
               }
-              if (lastMixConfigs.length > 0) {
-                lastMixResult = calcMixedPacking(c.l, c.w, c.h, lastMixConfigs, gap, allowRotate, 3, 'count', options, lastPrePlaced);
-              }
             }
-            crates.push(makeHybridCrate(c, domPackR.positions, domBC.box, lastDomCount, lastMixResult, secondaryConfigs));
+
+            // 回退：如果混装末箱没建成或没装入次要纸箱，用预占+填空方式
+            if (!lastCrateBuilt) {
+              var lastPrePlaced = domPackR.positions.slice(0, lastDomCount);
+              var lastMixResult = null;
+              if (secondaryConfigs.length > 0) {
+                var lastMixConfigs = [];
+                for (var lmi3 = 0; lmi3 < secondaryConfigs.length; lmi3++) {
+                  var rrq2 = remainingSecondary[lmi3];
+                  if (rrq2 >= 1e8) {
+                    lastMixConfigs.push({ box: secondaryConfigs[lmi3].box, qty: null });
+                  } else if (rrq2 > 0) {
+                    lastMixConfigs.push({ box: secondaryConfigs[lmi3].box, qty: Math.ceil(rrq2) });
+                  }
+                }
+                if (lastMixConfigs.length > 0) {
+                  lastMixResult = calcMixedPacking(c.l, c.w, c.h, lastMixConfigs, gap, allowRotate, 3, 'count', options, lastPrePlaced);
+                }
+              }
+              crates.push(makeHybridCrate(c, domPackR.positions, domBC.box, lastDomCount, lastMixResult, secondaryConfigs));
+            }
           }
 
           var tbc = crates.reduce(function(s, cr) { return s + cr.totalCount; }, 0);
