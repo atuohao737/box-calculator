@@ -7,9 +7,64 @@ window.App = (function() {
   const S = AppState;
   const PE = PackingEngine;
   const SM = StorageManager;
+  const CM = CacheManager;
   const V2 = Visualizer2D;
   const V3 = Visualizer3D;
   const UI = UIRenderer;
+
+  // 缓存相关状态（模块级）
+  var _cachePending = null; // { crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel, cachedBoxes, useCache }
+
+  function showCacheModal(cachedBoxes) {
+    var modal = document.getElementById('cache-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    var bodyHtml = '';
+    for (var i = 0; i < cachedBoxes.length; i++) {
+      var cb = cachedBoxes[i];
+      bodyHtml +=
+        '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px">' +
+          '<span class="color-dot" style="background:' + (cb.box.color || '#888') + ';width:10px;height:10px;border-radius:50%;flex-shrink:0"></span>' +
+          '<span style="flex:1;text-align:left">' + UI.escapeHtml(cb.box.name || '纸箱') + '</span>' +
+          '<b style="color:#1677ff">' + cb.result.count + '</b> 个' +
+          '<span style="color:#52c41a">' + (cb.result.utilRate * 100).toFixed(1) + '%</span>' +
+        '</div>';
+    }
+    document.getElementById('cache-modal-body').innerHTML = '' +
+      '以下纸箱已有最优排布记录：<br><br>' + bodyHtml +
+      '<br><span style="font-size:11px;color:#888">选择"使用最优排布"将直接复用缓存结果，跳过计算</span>';
+  }
+
+  function closeCacheModal() {
+    document.getElementById('cache-modal').style.display = 'none';
+    _cachePending = null;
+  }
+
+  function useCachedResult() {
+    var p = _cachePending;
+    _cachePending = null;
+    document.getElementById('cache-modal').style.display = 'none';
+    if (!p) return;
+    // 标记哪些纸箱使用缓存
+    _cachePending = p;
+    _cachePending.useCache = true;
+    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    setTimeout(function() {
+      _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
+    }, 60);
+  }
+
+  function recalcFromCache() {
+    var p = _cachePending;
+    _cachePending = null;
+    document.getElementById('cache-modal').style.display = 'none';
+    if (!p) return;
+    // 不标记使用缓存，全部重新计算
+    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    setTimeout(function() {
+      _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
+    }, 60);
+  }
 
   // 主题切换
   function toggleTheme() {
@@ -445,6 +500,25 @@ window.App = (function() {
     var totalCrates = crateList.length;
     showCalcProgress(modeLabel + ' · 准备计算...');
 
+    if (S.currentMode === 'single') {
+      // 单品对比模式：检查是否有已缓存的最优排布
+      var firstCrate = crateList[0];
+      var cachedBoxes = [];
+      for (var cbi = 0; cbi < activeBoxes.length; cbi++) {
+        var cb = activeBoxes[cbi];
+        var cached = CM.get(firstCrate.l, firstCrate.w, firstCrate.h, cb.l, cb.w, cb.h, gap, allowRotate, cb.keepUpright);
+        if (cached) {
+          cachedBoxes.push({ box: cb, result: cached });
+        }
+      }
+      if (cachedBoxes.length > 0) {
+        _cachePending = { crateList: crateList, activeBoxes: activeBoxes, gap: gap, layerGap: layerGap, allowRotate: allowRotate, retryCount: retryCount, totalCrates: totalCrates, modeLabel: modeLabel, cachedBoxes: cachedBoxes };
+        showCacheModal(cachedBoxes);
+        hideCalcProgress();
+        return;
+      }
+    }
+
     setTimeout(function() {
       _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel);
     }, 60);
@@ -493,7 +567,26 @@ window.App = (function() {
             return wb - wa;
           });
           var crCalcResults = sortedBoxes.map(function(b) {
-            var res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            // 检查是否应使用缓存
+            var res = null;
+            if (_cachePending && _cachePending.useCache) {
+              var cmatch = null;
+              for (var cmi = 0; cmi < (_cachePending.cachedBoxes || []).length; cmi++) {
+                var cbe = _cachePending.cachedBoxes[cmi];
+                if (cbe.box.id === b.id && cbe.box.l === b.l && cbe.box.w === b.w && cbe.box.h === b.h) {
+                  cmatch = cbe.result;
+                  break;
+                }
+              }
+              if (cmatch) {
+                res = cmatch;
+                // 标记已使用缓存
+                res._fromCache = true;
+              }
+            }
+            if (!res) {
+              res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            }
             var bw = parseFloat(b.weight) || 0;
             var totalWeight = res ? res.count * bw : 0;
             var weightLimited = maxWeight > 0 && totalWeight > maxWeight;
@@ -515,7 +608,7 @@ window.App = (function() {
               res.weightRate = totalWeight / maxWeight;
               res.weightLimited = false;
             }
-            return { box: b, crateL: cL, crateW: cW, crateH: cH, crateL_raw: cL, gap: gap, result: res };
+            return { box: b, crateL: cL, crateW: cW, crateH: cH, crateL_raw: cL, gap: gap, result: res, _fromCache: res._fromCache || false };
           });
           var bestIdx = 0;
           for (var i = 1; i < crCalcResults.length; i++) {
@@ -1220,10 +1313,26 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
+    markOptimal: function(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result) {
+      CM.save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result);
+      UI.flashMsg('✅ 已标记为最优排布，下次计算可直接复用');
+    },
+    markOptimalBatch: function(crateIdx, boxIdx) {
+      var br = S.batchResults[crateIdx];
+      if (!br || !br.calcResults || !br.calcResults[boxIdx]) return;
+      var cr = br.calcResults[boxIdx];
+      if (!cr || !cr.result) return;
+      var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+      var allowRotate = document.getElementById('opt-rotate').checked;
+      var keepUpright = !!cr.box.keepUpright;
+      CM.save(br.crate.l, br.crate.w, br.crate.h, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
+      UI.flashMsg('✅ 已标记为最优排布');
+    },
+    useCachedResult, recalcFromCache, closeCacheModal,
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
-    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, selectBatchBox2D: function(crateIdx, boxIdx) { UI.selectBatchBox2D(crateIdx, boxIdx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
+    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, selectBatchBox2D: function(crateIdx, boxIdx) { UI.selectBatchBox2D(crateIdx, boxIdx); }, markOptimalBatch: function(crateIdx, boxIdx) { /* handled inline in public API */ }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
     // 反推模式
     addReverseCrate, removeReverseCrate, updateReverseCrateName, updateReverseCrateDim,
     batchImportReverseCrates, selectReverseCrate: function(idx) { UI.selectReverseCrate(idx); }
@@ -1244,9 +1353,10 @@ window.App = (function() {
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
       updateCrateVolUI: function(){}, updateCrateNameUI: function(){},
-      batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, toggleBoxEnabled: function(){},
+      batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, markOptimalBatch: function(){}, toggleBoxEnabled: function(){},
       addReverseCrate: function(){}, removeReverseCrate: function(){}, updateReverseCrateName: function(){}, updateReverseCrateDim: function(){},
-      batchImportReverseCrates: function(){}, selectReverseCrate: function(){}
+      batchImportReverseCrates: function(){}, selectReverseCrate: function(){},
+      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, markOptimal: function(){}
     };
   }
 })();

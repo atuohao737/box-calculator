@@ -194,12 +194,13 @@ window.UIRenderer = (function() {
             var boxUtilColor = cr.result.utilRate > 0.7 ? '#52c41a' : cr.result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
             var boxName = escapeHtml(cr.box.name);
             breakdownHtml +=
-              '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:#fafafa">' +
+              '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:' + (cr._fromCache ? '#f6ffed' : '#fafafa') + '">' +
                 // 左侧：纸箱名 + 颜色点 + 最佳标记
                 '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">' +
                   '<span class="color-dot" style="background:' + cr.box.color + ';width:10px;height:10px;flex-shrink:0;border-radius:50%"></span>' +
                   '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">' + boxName + '</span>' +
                   (isBest ? '<span style="font-size:12px;flex-shrink:0" title="最佳装箱">⭐</span>' : '') +
+                  (cr._fromCache ? '<span style="font-size:10px;color:#52c41a;background:#f6ffed;border:1px solid #b7eb8f;border-radius:3px;padding:0 4px;flex-shrink:0">📌 缓存</span>' : '') +
                 '</div>' +
                 // 数量
                 '<span style="font-weight:700;color:#1677ff;min-width:32px;text-align:center">' + cr.result.count + '</span>' +
@@ -215,6 +216,7 @@ window.UIRenderer = (function() {
                 '<div style="display:flex;gap:4px;flex-shrink:0">' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">🎮</button>' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">📐</button>' +
+                  '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px;color:#fa8c16" onclick="event.stopPropagation();App.markOptimalBatch(' + origIdx + ',' + ci + ')" title="标记此排布为最优">⭐</button>' +
                 '</div>' +
               '</div>';
           }

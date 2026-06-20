@@ -361,7 +361,18 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   .form-row { grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .header-actions { gap: 4px; }
   .header-actions .btn { padding: 4px 6px; font-size: 10px; }
-}</style>
+}
+
+/* 缓存确认弹窗 */
+.cache-modal-card { position: relative; background: var(--bg-card); border-radius: 16px; padding: 32px 28px 24px; max-width: 400px; width: 90vw; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+.cache-modal-icon { font-size: 40px; margin-bottom: 12px; }
+.cache-modal-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 8px; }
+.cache-modal-body { font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; margin-bottom: 20px; }
+.cache-modal-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.cache-modal-close { position: absolute; top: 12px; right: 16px; background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-tertiary); }
+.cache-modal-close:hover { color: var(--color-text-primary); }
+
+</style>
 </head>
 <body>
 
@@ -2943,6 +2954,128 @@ window.StorageManager = (function() {
 </script>
 <script>
 // ============================================================
+// Module: CacheManager — 最优排布缓存
+// 将用户标记的最优排布存入 localStorage，下次同参数计算时直接复用
+// ============================================================
+window.CacheManager = (function() {
+  'use strict';
+  try {
+
+  var STORAGE_KEY = 'box-calc-optimal-cache-v1';
+  var MAX_ENTRIES = 200;
+
+  // 生成缓存键：木箱LWH + 纸箱LWH + gap + allowRotate + keepUpright
+  function makeKey(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright) {
+    return [
+      Math.round(crateL), Math.round(crateW), Math.round(crateH),
+      Math.round(boxL), Math.round(boxW), Math.round(boxH),
+      Math.round((gap || 0) * 100) / 100,
+      allowRotate ? '1' : '0',
+      keepUpright ? '1' : '0'
+    ].join('|');
+  }
+
+  function loadAll() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e) {
+      return {};
+    }
+  }
+
+  function saveAll(data) {
+    try {
+      // LRU 限制条目数
+      var keys = Object.keys(data);
+      if (keys.length > MAX_ENTRIES) {
+        keys.sort(function(a, b) { return (data[a].ts || 0) - (data[b].ts || 0); });
+        var remove = keys.slice(0, keys.length - MAX_ENTRIES);
+        for (var i = 0; i < remove.length; i++) delete data[remove[i]];
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch(e) {
+      console.warn('[CacheManager] 存储失败:', e.message);
+    }
+  }
+
+  // 保存标记的最优排布
+  function save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result) {
+    var key = makeKey(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
+    var data = loadAll();
+    data[key] = {
+      count: result.count,
+      utilRate: result.utilRate,
+      positions: result.positions,
+      isRotated: result.isRotated || false,
+      origL: result.origL || boxL,
+      origW: result.origW || boxW,
+      origH: result.origH || boxH,
+      bL: result.bL || boxL,
+      bW: result.bW || boxW,
+      bH: result.bH || boxH,
+      xCount: result.xCount || 0,
+      yCount: result.yCount || 0,
+      zCount: result.zCount || 0,
+      ts: Date.now()
+    };
+    saveAll(data);
+    return true;
+  }
+
+  // 查询缓存
+  function get(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright) {
+    var key = makeKey(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
+    var data = loadAll();
+    var entry = data[key];
+    if (!entry) return null;
+    return {
+      count: entry.count,
+      utilRate: entry.utilRate,
+      positions: entry.positions,
+      isRotated: entry.isRotated,
+      origL: entry.origL,
+      origW: entry.origW,
+      origH: entry.origH,
+      bL: entry.bL,
+      bW: entry.bW,
+      bH: entry.bH,
+      xCount: entry.xCount,
+      yCount: entry.yCount,
+      zCount: entry.zCount,
+      ts: entry.ts
+    };
+  }
+
+  // 删除指定缓存
+  function remove(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright) {
+    var key = makeKey(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright);
+    var data = loadAll();
+    delete data[key];
+    saveAll(data);
+  }
+
+  // 清空所有缓存
+  function clear() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  }
+
+  // 获取条目数
+  function count() {
+    return Object.keys(loadAll()).length;
+  }
+
+  return { save: save, get: get, remove: remove, clear: clear, count: count, makeKey: makeKey };
+
+  } catch(e) {
+    console.error('[CacheManager] 模块初始化失败:', e);
+    return { save: function(){}, get: function(){return null}, remove: function(){}, clear: function(){}, count: function(){return 0}, makeKey: function(){return ''} };
+  }
+})();
+
+</script>
+<script>
+// ============================================================
 // Module: Visualizer2D — 2D 俯视图可视化
 // ============================================================
 window.Visualizer2D = (function() {
@@ -4230,12 +4363,13 @@ window.UIRenderer = (function() {
             var boxUtilColor = cr.result.utilRate > 0.7 ? '#52c41a' : cr.result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
             var boxName = escapeHtml(cr.box.name);
             breakdownHtml +=
-              '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:#fafafa">' +
+              '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:' + (cr._fromCache ? '#f6ffed' : '#fafafa') + '">' +
                 // 左侧：纸箱名 + 颜色点 + 最佳标记
                 '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">' +
                   '<span class="color-dot" style="background:' + cr.box.color + ';width:10px;height:10px;flex-shrink:0;border-radius:50%"></span>' +
                   '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">' + boxName + '</span>' +
                   (isBest ? '<span style="font-size:12px;flex-shrink:0" title="最佳装箱">⭐</span>' : '') +
+                  (cr._fromCache ? '<span style="font-size:10px;color:#52c41a;background:#f6ffed;border:1px solid #b7eb8f;border-radius:3px;padding:0 4px;flex-shrink:0">📌 缓存</span>' : '') +
                 '</div>' +
                 // 数量
                 '<span style="font-weight:700;color:#1677ff;min-width:32px;text-align:center">' + cr.result.count + '</span>' +
@@ -4251,6 +4385,7 @@ window.UIRenderer = (function() {
                 '<div style="display:flex;gap:4px;flex-shrink:0">' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">🎮</button>' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">📐</button>' +
+                  '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px;color:#fa8c16" onclick="event.stopPropagation();App.markOptimalBatch(' + origIdx + ',' + ci + ')" title="标记此排布为最优">⭐</button>' +
                 '</div>' +
               '</div>';
           }
@@ -4772,9 +4907,64 @@ window.App = (function() {
   const S = AppState;
   const PE = PackingEngine;
   const SM = StorageManager;
+  const CM = CacheManager;
   const V2 = Visualizer2D;
   const V3 = Visualizer3D;
   const UI = UIRenderer;
+
+  // 缓存相关状态（模块级）
+  var _cachePending = null; // { crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel, cachedBoxes, useCache }
+
+  function showCacheModal(cachedBoxes) {
+    var modal = document.getElementById('cache-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    var bodyHtml = '';
+    for (var i = 0; i < cachedBoxes.length; i++) {
+      var cb = cachedBoxes[i];
+      bodyHtml +=
+        '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px">' +
+          '<span class="color-dot" style="background:' + (cb.box.color || '#888') + ';width:10px;height:10px;border-radius:50%;flex-shrink:0"></span>' +
+          '<span style="flex:1;text-align:left">' + UI.escapeHtml(cb.box.name || '纸箱') + '</span>' +
+          '<b style="color:#1677ff">' + cb.result.count + '</b> 个' +
+          '<span style="color:#52c41a">' + (cb.result.utilRate * 100).toFixed(1) + '%</span>' +
+        '</div>';
+    }
+    document.getElementById('cache-modal-body').innerHTML = '' +
+      '以下纸箱已有最优排布记录：<br><br>' + bodyHtml +
+      '<br><span style="font-size:11px;color:#888">选择"使用最优排布"将直接复用缓存结果，跳过计算</span>';
+  }
+
+  function closeCacheModal() {
+    document.getElementById('cache-modal').style.display = 'none';
+    _cachePending = null;
+  }
+
+  function useCachedResult() {
+    var p = _cachePending;
+    _cachePending = null;
+    document.getElementById('cache-modal').style.display = 'none';
+    if (!p) return;
+    // 标记哪些纸箱使用缓存
+    _cachePending = p;
+    _cachePending.useCache = true;
+    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    setTimeout(function() {
+      _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
+    }, 60);
+  }
+
+  function recalcFromCache() {
+    var p = _cachePending;
+    _cachePending = null;
+    document.getElementById('cache-modal').style.display = 'none';
+    if (!p) return;
+    // 不标记使用缓存，全部重新计算
+    showCalcProgress(p.modeLabel + ' · 准备计算...');
+    setTimeout(function() {
+      _doCalculate(p.crateList, p.activeBoxes, p.gap, p.layerGap, p.allowRotate, p.retryCount, p.totalCrates, p.modeLabel);
+    }, 60);
+  }
 
   // 主题切换
   function toggleTheme() {
@@ -5210,6 +5400,25 @@ window.App = (function() {
     var totalCrates = crateList.length;
     showCalcProgress(modeLabel + ' · 准备计算...');
 
+    if (S.currentMode === 'single') {
+      // 单品对比模式：检查是否有已缓存的最优排布
+      var firstCrate = crateList[0];
+      var cachedBoxes = [];
+      for (var cbi = 0; cbi < activeBoxes.length; cbi++) {
+        var cb = activeBoxes[cbi];
+        var cached = CM.get(firstCrate.l, firstCrate.w, firstCrate.h, cb.l, cb.w, cb.h, gap, allowRotate, cb.keepUpright);
+        if (cached) {
+          cachedBoxes.push({ box: cb, result: cached });
+        }
+      }
+      if (cachedBoxes.length > 0) {
+        _cachePending = { crateList: crateList, activeBoxes: activeBoxes, gap: gap, layerGap: layerGap, allowRotate: allowRotate, retryCount: retryCount, totalCrates: totalCrates, modeLabel: modeLabel, cachedBoxes: cachedBoxes };
+        showCacheModal(cachedBoxes);
+        hideCalcProgress();
+        return;
+      }
+    }
+
     setTimeout(function() {
       _doCalculate(crateList, activeBoxes, gap, layerGap, allowRotate, retryCount, totalCrates, modeLabel);
     }, 60);
@@ -5258,7 +5467,26 @@ window.App = (function() {
             return wb - wa;
           });
           var crCalcResults = sortedBoxes.map(function(b) {
-            var res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            // 检查是否应使用缓存
+            var res = null;
+            if (_cachePending && _cachePending.useCache) {
+              var cmatch = null;
+              for (var cmi = 0; cmi < (_cachePending.cachedBoxes || []).length; cmi++) {
+                var cbe = _cachePending.cachedBoxes[cmi];
+                if (cbe.box.id === b.id && cbe.box.l === b.l && cbe.box.w === b.w && cbe.box.h === b.h) {
+                  cmatch = cbe.result;
+                  break;
+                }
+              }
+              if (cmatch) {
+                res = cmatch;
+                // 标记已使用缓存
+                res._fromCache = true;
+              }
+            }
+            if (!res) {
+              res = PE.calcPacking(cL, cW, cH, b.l, b.w, b.h, gap, layerGap, allowRotate, b.keepUpright);
+            }
             var bw = parseFloat(b.weight) || 0;
             var totalWeight = res ? res.count * bw : 0;
             var weightLimited = maxWeight > 0 && totalWeight > maxWeight;
@@ -5280,7 +5508,7 @@ window.App = (function() {
               res.weightRate = totalWeight / maxWeight;
               res.weightLimited = false;
             }
-            return { box: b, crateL: cL, crateW: cW, crateH: cH, crateL_raw: cL, gap: gap, result: res };
+            return { box: b, crateL: cL, crateW: cW, crateH: cH, crateL_raw: cL, gap: gap, result: res, _fromCache: res._fromCache || false };
           });
           var bestIdx = 0;
           for (var i = 1; i < crCalcResults.length; i++) {
@@ -5985,10 +6213,26 @@ window.App = (function() {
     loadHistory, deleteHistory, clearHistoryConfirm,
     clearAll, exportResult, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
+    markOptimal: function(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result) {
+      CM.save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result);
+      UI.flashMsg('✅ 已标记为最优排布，下次计算可直接复用');
+    },
+    markOptimalBatch: function(crateIdx, boxIdx) {
+      var br = S.batchResults[crateIdx];
+      if (!br || !br.calcResults || !br.calcResults[boxIdx]) return;
+      var cr = br.calcResults[boxIdx];
+      if (!cr || !cr.result) return;
+      var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+      var allowRotate = document.getElementById('opt-rotate').checked;
+      var keepUpright = !!cr.box.keepUpright;
+      CM.save(br.crate.l, br.crate.w, br.crate.h, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
+      UI.flashMsg('✅ 已标记为最优排布');
+    },
+    useCachedResult, recalcFromCache, closeCacheModal,
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
-    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, selectBatchBox2D: function(crateIdx, boxIdx) { UI.selectBatchBox2D(crateIdx, boxIdx); }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
+    batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, selectBatchBox2D: function(crateIdx, boxIdx) { UI.selectBatchBox2D(crateIdx, boxIdx); }, markOptimalBatch: function(crateIdx, boxIdx) { /* handled inline in public API */ }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
     // 反推模式
     addReverseCrate, removeReverseCrate, updateReverseCrateName, updateReverseCrateDim,
     batchImportReverseCrates, selectReverseCrate: function(idx) { UI.selectReverseCrate(idx); }
@@ -6009,9 +6253,10 @@ window.App = (function() {
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
       updateCrateVolUI: function(){}, updateCrateNameUI: function(){},
-      batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, toggleBoxEnabled: function(){},
+      batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, markOptimalBatch: function(){}, toggleBoxEnabled: function(){},
       addReverseCrate: function(){}, removeReverseCrate: function(){}, updateReverseCrateName: function(){}, updateReverseCrateDim: function(){},
-      batchImportReverseCrates: function(){}, selectReverseCrate: function(){}
+      batchImportReverseCrates: function(){}, selectReverseCrate: function(){},
+      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, markOptimal: function(){}
     };
   }
 })();
@@ -6118,6 +6363,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- 移动端侧边栏遮罩 -->
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
+
+<!-- 缓存确认弹窗 -->
+<div class="modal-overlay" id="cache-modal" style="display:none">
+  <div class="cache-modal-card">
+    <div class="cache-modal-icon">📌</div>
+    <h3 class="cache-modal-title">发现已缓存的最优排布</h3>
+    <p class="cache-modal-body" id="cache-modal-body">
+      该纸箱尺寸组合已有最优排布记录<br>
+      <b id="cache-modal-count" style="font-size:18px;color:#1677ff">0</b> 个 · 利用率 <b id="cache-modal-util" style="color:#52c41a">0%</b>
+    </p>
+    <div class="cache-modal-actions">
+      <button class="btn btn-primary" id="cache-btn-use" onclick="App.useCachedResult()">使用最优排布</button>
+      <button class="btn btn-outline" id="cache-btn-recalc" onclick="App.recalcFromCache()">重新计算</button>
+    </div>
+    <button class="cache-modal-close" onclick="App.closeCacheModal()">✕</button>
+  </div>
+</div>
 
 <!-- 计算进度遮罩 -->
 <div class="calc-overlay" id="calc-overlay">
