@@ -185,32 +185,37 @@ window.UIRenderer = (function() {
           }
         });
       } else if (br.calcResults) {
-        // 单品模式：三列布局 - 纸箱 | 利用率 | 3D
-        breakdownHtml += '<div style="display:flex;flex-direction:column;gap:6px">';
+        // 单品模式：优化布局 — 纸箱名 | 数量 | 利用率 | 按钮
+        breakdownHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
         br.calcResults.forEach(function(cr, ci) {
           if (cr.result && cr.result.count > 0) {
             var isBest = cr.isBest;
             var boxUtilPct = (cr.result.utilRate * 100).toFixed(1);
             var boxUtilColor = cr.result.utilRate > 0.7 ? '#52c41a' : cr.result.utilRate > 0.4 ? '#fa8c16' : '#ff4d4f';
+            var boxName = escapeHtml(cr.box.name);
             breakdownHtml +=
-              '<div style="display:grid;grid-template-columns:1fr 80px 44px;align-items:center;gap:6px;font-size:12px;padding:4px 0;border-bottom:1px solid #f5f5f5">' +
-                // 第一列：纸箱名 + 数量
-                '<div style="display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden">' +
-                  '<span class="color-dot" style="background:' + cr.box.color + ';width:8px;height:8px;flex-shrink:0"></span>' +
-                  '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(cr.box.name) + '</span>' +
-                  '<b style="color:#1677ff;flex-shrink:0">' + cr.result.count + '</b>' +
-                  (isBest ? ' <span style="font-size:10px;color:#52c41a;flex-shrink:0">⭐</span>' : '') +
+              '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:6px;background:#fafafa">' +
+                // 左侧：纸箱名 + 颜色点
+                '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">' +
+                  '<span class="color-dot" style="background:' + cr.box.color + ';width:10px;height:10px;flex-shrink:0;border-radius:50%"></span>' +
+                  '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">' + boxName + '</span>' +
                 '</div>' +
-                // 第二列：单个纸箱的利用率进度条
-                '<div style="display:flex;align-items:center;gap:4px">' +
-                  '<div style="flex:1;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden">' +
-                    '<div style="height:100%;width:' + boxUtilPct + '%;background:' + boxUtilColor + ';border-radius:3px;transition:width 0.3s"></div>' +
+                // 数量
+                '<span style="font-weight:700;color:#1677ff;min-width:32px;text-align:center">' + cr.result.count + '</span>' +
+                '<span style="font-size:11px;color:#888;flex-shrink:0">个</span>' +
+                // 利用率进度条
+                '<div style="flex:1;max-width:120px;display:flex;align-items:center;gap:4px">' +
+                  '<div style="flex:1;height:8px;background:#e8e8e8;border-radius:4px;overflow:hidden">' +
+                    '<div style="height:100%;width:' + boxUtilPct + '%;background:' + boxUtilColor + ';border-radius:4px;transition:width 0.3s"></div>' +
                   '</div>' +
-                  '<span style="font-size:10px;font-weight:600;color:' + boxUtilColor + ';flex-shrink:0">' + boxUtilPct + '%</span>' +
+                  '<span style="font-size:11px;font-weight:600;color:' + boxUtilColor + ';min-width:36px;text-align:right">' + boxUtilPct + '%</span>' +
                 '</div>' +
-                // 第三列：3D/2D按钮
-                '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">3D</button>' +
-                '<button class="btn-outline btn-xs" style="text-align:center" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">2D</button>' +
+                // 按钮组
+                '<div style="display:flex;gap:4px;flex-shrink:0">' +
+                  '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">🎮</button>' +
+                  '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">📐</button>' +
+                '</div>' +
+                (isBest ? '<span style="font-size:12px;flex-shrink:0" title="最佳装箱">⭐</span>' : '') +
               '</div>';
           }
         });
@@ -218,8 +223,8 @@ window.UIRenderer = (function() {
       }
       if (breakdownHtml) {
         html += '<div style="padding:0 12px 10px 12px;border-top:1px solid #f0f0f0;padding-top:10px">';
-        html += '<div style="display:grid;grid-template-columns:1fr 80px 44px;gap:6px;font-size:11px;color:#888;margin-bottom:4px">';
-        html += '<span>纸箱组成</span><span style="text-align:center">利用率</span><span></span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#888;margin-bottom:6px">';
+        html += '<span style="flex:1">纸箱组成</span><span style="min-width:32px;text-align:center">#</span><span></span><span style="flex:1;max-width:120px">利用率</span><span style="width:82px;text-align:center">视图</span>';
         html += '</div>';
         html += breakdownHtml;
         html += '</div>';
