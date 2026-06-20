@@ -391,8 +391,6 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
     <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
   </div>
   <div class="header-actions">
-    <button class="btn btn-icon btn-theme" id="btn-theme-toggle" onclick="App.toggleTheme()" title="切换深色/浅色主题">🌙</button>
-    <button class="btn btn-outline btn-sm" onclick="App.exportResult()">导出</button>
     <button class="btn btn-sm" style="background:#f5f5f5;border:1px solid #d9d9d9;color:#666" onclick="App.clearAll()">重置</button>
   </div>
 </header>
@@ -5003,26 +5001,6 @@ window.App = (function() {
     }, 60);
   }
 
-  // 主题切换
-  function toggleTheme() {
-    var body = document.body;
-    var btn = document.getElementById('btn-theme-toggle');
-    body.classList.toggle('dark-theme');
-    var isDark = body.classList.contains('dark-theme');
-    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
-    try { localStorage.setItem('box-calc-theme', isDark ? 'dark' : 'light'); } catch(e) {}
-  }
-
-  function initTheme() {
-    var saved = 'light';
-    try { saved = localStorage.getItem('box-calc-theme') || 'light'; } catch(e) {}
-    if (saved === 'dark') {
-      document.body.classList.add('dark-theme');
-      var btn = document.getElementById('btn-theme-toggle');
-      if (btn) btn.textContent = '☀️';
-    }
-  }
-
   // 侧边栏（移动端）
   function openSidebar() {
     document.getElementById('sidebar-panel').classList.add('open');
@@ -6040,121 +6018,6 @@ window.App = (function() {
     UI.selectReverseCrate(idx);
   }
 
-  function exportResult() {
-    const s = S;
-    // 反推模式导出
-    if (s.currentMode === 'reverse' && s.reverseResult) {
-      var rr = s.reverseResult;
-      var text = '=== 木箱反推计算结果 ===\n';
-      text += '木箱尺寸: ' + rr.crateL + ' × ' + rr.crateW + ' × ' + rr.crateH + ' mm\n';
-      text += '需要木箱数量: ' + rr.totalCrates + ' 个\n';
-      text += '总装纸箱数: ' + rr.totalBoxCount + ' 个\n';
-      text += '总体空间利用率: ' + (rr.totalUtilRate * 100).toFixed(1) + '%\n\n';
-      rr.crates.forEach(function(c, i) {
-        text += '--- 木箱 #' + (i + 1) + ' ---\n';
-        text += '装入纸箱: ' + c.totalCount + ' 个\n';
-        text += '空间利用率: ' + (c.utilRate * 100).toFixed(1) + '%\n';
-        if (c.maxWeight > 0) text += '载重: ' + (c.totalWeight || 0).toFixed(1) + ' / ' + c.maxWeight + ' kg\n';
-        var summary = {};
-        c.boxes.forEach(function(b) {
-          var key = b.box.name || ('纸箱' + b.box.id);
-          if (!summary[key]) summary[key] = 0;
-          summary[key]++;
-        });
-        Object.keys(summary).forEach(function(k) {
-          text += '  ' + k + ': ' + summary[k] + ' 个\n';
-        });
-        text += '\n';
-      });
-      downloadText(text, '木箱反推');
-      return;
-    }
-    // 批量模式导出
-    if (s.batchMode && s.batchResults && s.batchResults.length > 0) {
-      let text = '=== 装箱计算结果（批量对比' + (s.currentMode === 'mixed' ? ' · 混装' : ' · 单品') + '）===\n';
-      text += '纸箱数量: ' + s.boxes.filter(function(b) { return b.enabled !== false; }).length + ' 种\n';
-      text += '对比木箱: ' + s.batchResults.length + ' 种\n\n';
-      s.batchResults.forEach(function(br, i) {
-        text += '--- ' + br.crate.name + ' (' + br.crate.l + '×' + br.crate.w + '×' + br.crate.h + ' mm) ---\n';
-        if (s.currentMode === 'single') {
-          br.calcResults.forEach(function(cr) {
-            text += '  ' + cr.box.name + ': ';
-            if (cr.result) {
-              text += cr.result.count + ' 个, 利用率 ' + (cr.result.utilRate * 100).toFixed(1) + '%';
-              if (cr.result.maxWeight > 0) text += ', 载重 ' + (cr.result.totalWeight || 0).toFixed(1) + '/' + cr.result.maxWeight + ' kg';
-            } else { text += '无法装入'; }
-            text += '\n';
-          });
-        } else {
-          if (br.mixResult && br.mixResult.totalCount > 0) {
-            text += '  总数: ' + br.mixResult.totalCount + ' 个, 利用率: ' + (br.mixResult.utilRate * 100).toFixed(1) + '%\n';
-            br.mixResult.breakdown.filter(function(b) { return b.count > 0; }).forEach(function(b) {
-              text += '  ' + b.box.name + ': ' + b.count + ' 个';
-              if (b.requested !== null) text += ' / 需求 ' + b.requested + ' 个';
-              text += '\n';
-            });
-          } else { text += '  无法装入\n'; }
-        }
-        text += '\n';
-      });
-      downloadText(text, '装箱计算_批量对比');
-      return;
-    }
-
-    if (s.currentMode === 'single') {
-      if (!s.calcResults || s.calcResults.length === 0) { alert('没有可导出的结果，请先计算'); return; }
-      const best = s.calcResults.find(r => r.isBest) || s.calcResults[0];
-      let text = '=== 装箱计算结果（单品对比模式）===\n';
-      text += '木箱尺寸（内径）: ' + best.crateL + ' × ' + best.crateW + ' × ' + best.crateH + ' mm\n\n';
-      s.calcResults.forEach(function(cr) {
-        text += '--- ' + cr.box.name + ' ---\n';
-        text += '原始尺寸: ' + (cr.box.origL||cr.box.l) + ' × ' + (cr.box.origW||cr.box.w) + ' × ' + (cr.box.origH||cr.box.h) + ' mm\n';
-        if (cr.result) {
-          text += '实际方向: ' + cr.result.bL + ' × ' + cr.result.bW + ' × ' + cr.result.bH + ' mm' + (cr.result.isRotated ? ' (旋转)' : '') + '\n';
-          text += '装入数量: ' + cr.result.count + ' 个\n';
-          text += '排列方式: ' + cr.result.xCount + ' × ' + cr.result.yCount + ' × ' + cr.result.zCount + '\n';
-          const tailFill = cr.result.count - cr.result.xCount * cr.result.yCount * cr.result.zCount;
-          if (tailFill > 0) text += '旋转填充增额: +' + tailFill + ' 个\n';
-          text += '空间利用率: ' + (cr.result.utilRate * 100).toFixed(1) + '%\n';
-          if (cr.result.maxWeight > 0) {
-            text += '载重: ' + (cr.result.totalWeight || 0).toFixed(1) + ' / ' + cr.result.maxWeight + ' kg (' + ((cr.result.weightRate || 0) * 100).toFixed(0) + '%)\n';
-            if (cr.result.weightLimited) text += '⚠️ 受承重限制，原始可装: ' + cr.result.originalCount + ' 个\n';
-          }
-        } else { text += '无法装入（尺寸超限）\n'; }
-        text += '\n';
-      });
-      downloadText(text, '装箱计算_单品');
-    } else {
-      const mr = s.mixResult;
-      if (!mr || mr.totalCount === 0) { alert('没有可导出的结果，请先计算'); return; }
-      let text = '=== 装箱计算结果（混装模式）===\n';
-      text += '木箱尺寸（内径）: ' + mr.crateL + ' × ' + mr.crateW + ' × ' + mr.crateH + ' mm\n';
-      text += '优化策略: ' + (mr.strategy === 'util' ? '空间优先（最大化空间利用率）' : '数量优先（最大化装箱数量）') + '\n';
-      text += '总装入数量: ' + mr.totalCount + ' 个\n';
-      text += '空间利用率: ' + (mr.utilRate * 100).toFixed(1) + '%\n';
-      if (mr.maxWeight > 0) {
-        text += '载重: ' + (mr.totalWeight || 0).toFixed(1) + ' / ' + mr.maxWeight + ' kg (' + ((mr.weightRate || 0) * 100).toFixed(0) + '%)\n';
-        if (mr.weightOverLimit) text += '⚠️ 总重量超过木箱最大承重\n';
-      }
-      text += '\n';
-      text += '各类纸箱明细:\n';
-      mr.breakdown.filter(function(b) { return b.count > 0; }).forEach(function(b) {
-        text += '  ' + b.box.name + ' (' + b.box.l + '×' + b.box.w + '×' + b.box.h + ' mm): ' + b.count + ' 个';
-        if (b.requested !== null) text += ' / 需求 ' + b.requested + ' 个';
-        text += '\n';
-      });
-      downloadText(text, '装箱计算_混装');
-    }
-  }
-
-  function downloadText(text, prefix) {
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = prefix + '_' + new Date().toLocaleDateString('zh-CN').replace(/\//g,'') + '.txt';
-    a.click();
-  }
-
   function updateCrateVol() {
     const l = parseFloat(document.getElementById('c-l').value);
     const w = parseFloat(document.getElementById('c-w').value);
@@ -6245,9 +6108,6 @@ window.App = (function() {
         if (el) el.addEventListener('input', updateCrateVol);
       });
 
-      // 初始化主题
-      initTheme();
-
       console.log('[App] 初始化完成 - 模式:', S.currentMode);
     } catch(e) {
       console.error('[App] 初始化失败:', e.message, e.stack);
@@ -6261,7 +6121,7 @@ window.App = (function() {
     showSpecManager, closeSpecManager, switchSpecTab,
     calculate, switchTab, switchToVisual, switchTo2D, switchScheme,
     loadHistory, deleteHistory, clearHistoryConfirm,
-    clearAll, exportResult, updateCrateVol,
+    clearAll, updateCrateVol,
     resetCamera, toggleWireframe, toggleCrateVis, toggleOrientationMarkers, toggleCrateDashed,
     markOptimal: function(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result) {
       var saved3 = CM.save(crateL, crateW, crateH, boxL, boxW, boxH, gap, allowRotate, keepUpright, result);
@@ -6288,7 +6148,7 @@ window.App = (function() {
       UI.flashMsg(saved2 ? '✅ 已标记为最优排布' : '⚠️ 缓存空间不足，标记失败');
     },
     useCachedResult, recalcFromCache, closeCacheModal, removeCacheEntry,
-    openSidebar, closeSidebar, cancelCalc, toggleTheme,
+    openSidebar, closeSidebar, cancelCalc,
     // 批量模式
     toggleBatchMode, addCrateUI, removeCrateUI, updateCrateVolUI, updateCrateNameUI,
     batchImportCrates, selectBatchCrate: function(idx, switchTo3D) { UI.selectBatchCrate(idx, switchTo3D); }, selectBatchBox: function(crateIdx, boxIdx) { UI.selectBatchBox(crateIdx, boxIdx); }, selectBatchBox2D: function(crateIdx, boxIdx) { UI.selectBatchBox2D(crateIdx, boxIdx); }, markOptimalBatch: function(crateIdx, boxIdx) { /* handled inline in public API */ }, toggleBoxEnabled: function(id, checked) { S.toggleBoxEnabled(id, checked); },
@@ -6307,7 +6167,7 @@ window.App = (function() {
       showSpecManager: function(){}, closeSpecManager: function(){}, switchSpecTab: function(){},
       calculate: function(){}, switchTab: function(){}, switchToVisual: function(){}, switchScheme: function(){},
       loadHistory: function(){}, deleteHistory: function(){}, clearHistoryConfirm: function(){},
-      clearAll: function(){}, exportResult: function(){}, updateCrateVol: function(){},
+      clearAll: function(){}, updateCrateVol: function(){},
       resetCamera: function(){}, toggleWireframe: function(){}, toggleCrateVis: function(){}, toggleOrientationMarkers: function(){}, toggleCrateDashed: function(){},
       openSidebar: function(){}, closeSidebar: function(){},
       toggleBatchMode: function(){}, addCrateUI: function(){}, removeCrateUI: function(){},
