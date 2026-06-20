@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>标准木箱装箱计算器</title>
+<title>木箱装箱计算器V2</title>
 <style>* { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -367,7 +367,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
 
 <header class="app-header">
   <div style="display:flex;align-items:center">
-    <h1>📦 标准木箱装箱计算器</h1>
+    <h1>📦 木箱装箱计算器V2</h1>
     <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
   </div>
   <div class="header-actions">
@@ -2253,12 +2253,90 @@ window.PackingEngine = (function() {
     return best;
   }
 
-  // 反推对比：对多种木箱尺寸分别运行FFD，给出推荐
-  function calcReverseCompare(crateList, boxConfigs, gap, allowRotate) {
+  // 反推对比：对多种木箱尺寸运行算法，给出推荐
+  // 单一纸箱类型时使用 calcPacking（优化枚举），多类型时回退到 FFD
+  function calcReverseCompare(crateList, boxConfigs, gap, allowRotate, options) {
+    var useOptimized = boxConfigs.length === 1;
+
+    // 辅助：根据 calcPacking 结果构建一个 crate 对象
+    function makeCrateEntry(crateSpec, packR, box, boxCount) {
+      var usedPositions = packR.positions.slice(0, boxCount);
+      var boxVol = usedPositions.reduce(function(s, p) { return s + p.l * p.w * p.h; }, 0);
+      var iL = crateSpec.l - gap * 2;
+      var iW = crateSpec.w - gap * 2;
+      var iH = crateSpec.h - gap * 2;
+      var fullVol = iL * iW * iH;
+      var tw = boxCount * (parseFloat(box.weight) || 0);
+      return {
+        crate: { l: crateSpec.l, w: crateSpec.w, h: crateSpec.h },
+        boxes: usedPositions.map(function(pos) { return { boxIdx: 0, box: box, pos: pos }; }),
+        totalCount: boxCount,
+        utilRate: fullVol > 0 ? boxVol / fullVol : 0,
+        totalWeight: tw,
+        maxWeight: crateSpec.maxWeight || 0,
+        weightRate: crateSpec.maxWeight > 0 ? tw / crateSpec.maxWeight : 0,
+        displayCrateL: crateSpec.l,
+        displayCrateW: crateSpec.w,
+        displayCrateH: crateSpec.h
+      };
+    }
+
     var results = [];
     for (var i = 0; i < crateList.length; i++) {
       var c = crateList[i];
-      var res = calcReverse(c.l, c.w, c.h, boxConfigs, gap, allowRotate, c.maxWeight || 0);
+      var res;
+      if (useOptimized) {
+        var bc = boxConfigs[0];
+        var keepUpright = !!(bc.box && bc.box.keepUpright);
+        var packR = calcPacking(c.l, c.w, c.h, bc.box.l, bc.box.w, bc.box.h, gap, 0, allowRotate, keepUpright, options);
+        if (!packR || packR.count === 0) {
+          res = calcReverse(c.l, c.w, c.h, boxConfigs, gap, allowRotate, c.maxWeight || 0);
+        } else {
+          var maxPerCrate = packR.count;
+          var qtyVal = bc.qty;
+          var totalDemand = (qtyVal === null || qtyVal === undefined || qtyVal === '')
+            ? null : Math.max(1, parseInt(qtyVal) || 1);
+
+          if (totalDemand === null) {
+            // 无限量 → 只装一个木箱
+            var entry = makeCrateEntry(c, packR, bc.box, maxPerCrate);
+            res = {
+              crates: [entry],
+              totalCrates: 1,
+              totalBoxCount: maxPerCrate,
+              totalUtilRate: entry.utilRate,
+              crateL: c.l, crateW: c.w, crateH: c.h,
+              gap: gap
+            };
+          } else {
+            var numFullCrates = Math.floor(totalDemand / maxPerCrate);
+            var lastCount = totalDemand % maxPerCrate;
+            var crates = [];
+            for (var j = 0; j < numFullCrates; j++) {
+              crates.push(makeCrateEntry(c, packR, bc.box, maxPerCrate));
+            }
+            if (lastCount > 0) {
+              crates.push(makeCrateEntry(c, packR, bc.box, lastCount));
+            }
+            var tbc = crates.reduce(function(s, cr) { return s + cr.totalCount; }, 0);
+            var tv = crates.reduce(function(s, cr) { return s + cr.totalCount * (bc.box.l * bc.box.w * bc.box.h); }, 0);
+            var iL = c.l - gap * 2, iW = c.w - gap * 2, iH = c.h - gap * 2;
+            var fullVol = iL * iW * iH;
+            var tc = crates.length;
+            var tur = tc > 0 && fullVol > 0 ? tv / (fullVol * tc) : 0;
+            res = {
+              crates: crates,
+              totalCrates: tc,
+              totalBoxCount: tbc,
+              totalUtilRate: tur,
+              crateL: c.l, crateW: c.w, crateH: c.h,
+              gap: gap
+            };
+          }
+        }
+      } else {
+        res = calcReverse(c.l, c.w, c.h, boxConfigs, gap, allowRotate, c.maxWeight || 0);
+      }
       res.crateName = c.name || ('木箱' + (i + 1));
       res.crateId = c.id;
       results.push(res);
