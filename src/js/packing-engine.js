@@ -993,7 +993,7 @@ window.PackingEngine = (function() {
 
     // 间隙填充：对最优结果扫描剩余空隙，尝试塞入更多纸箱
     if (bestResult && bestResult.totalCount > 0) {
-      var filled = fillGaps(bestResult, boxConfigs, crateL, crateW, crateH, gap, allowRotate);
+      var filled = fillGaps(bestResult, boxConfigs, crateL, crateW, crateH, gap, allowRotate, prePlaced);
       if (filled) bestResult = filled;
     }
 
@@ -1071,6 +1071,12 @@ window.PackingEngine = (function() {
                   var hasOverlap = false;
                   for (var oi = 0; oi < pl.length; oi++) {
                     if (ov3dTop(cand, pl[oi])) { hasOverlap = true; break; }
+                  }
+                  // 也检查与预占空间（主导纸箱）的重叠
+                  if (!hasOverlap && prePlaced && prePlaced.length > 0) {
+                    for (var ppi3 = 0; ppi3 < prePlaced.length; ppi3++) {
+                      if (ov3dTop(cand, prePlaced[ppi3])) { hasOverlap = true; break; }
+                    }
                   }
                   // 也检查与本次已放入的顶填纸箱重叠
                   if (!hasOverlap) {
@@ -1177,13 +1183,39 @@ window.PackingEngine = (function() {
       }
     }
 
+    // 最终限幅：确保任何纸箱不超过其需求数量
+    if (bestResult && bestResult.placed) {
+      var actualCounts = {};
+      var validPlaced = [];
+      for (var fi = 0; fi < bestResult.placed.length; fi++) {
+        var fp = bestResult.placed[fi];
+        var fbc = boxConfigs[fp.boxIdx];
+        actualCounts[fp.boxIdx] = (actualCounts[fp.boxIdx] || 0) + 1;
+        if (!fbc || fbc.qty === null || actualCounts[fp.boxIdx] <= fbc.qty) {
+          validPlaced.push(fp);
+        }
+      }
+      if (validPlaced.length < bestResult.placed.length) {
+        bestResult.placed = validPlaced;
+        bestResult.totalCount = validPlaced.length;
+        var tv2 = 0;
+        for (var fi2 = 0; fi2 < validPlaced.length; fi2++) {
+          tv2 += validPlaced[fi2].l * validPlaced[fi2].w * validPlaced[fi2].h;
+        }
+        bestResult.utilRate = tv2 / (bestResult.crateL * bestResult.crateW * bestResult.crateH);
+        bestResult.breakdown = boxConfigs.map(function(bc, i) {
+          return { box: bc.box, count: actualCounts[i] || 0, requested: bc.qty };
+        });
+      }
+    }
+
     return bestResult;
   }
 
   // ============================================================
   // 间隙填充：主算法结束后，扫描剩余空隙尝试塞入更多纸箱
   // ============================================================
-  function fillGaps(result, boxConfigs, crateL, crateW, crateH, gap, allowRotate) {
+  function fillGaps(result, boxConfigs, crateL, crateW, crateH, gap, allowRotate, prePlaced) {
     if (!result || !result.placed || result.placed.length === 0) return result;
 
     const cL = crateL - gap * 2;
@@ -1195,6 +1227,12 @@ window.PackingEngine = (function() {
     const occupied = result.placed.map(function(p) {
       return { x: p.x - gap, y: p.y - gap, z: p.z - gap, x2: p.x + p.l - gap, y2: p.y + p.w - gap, z2: p.z + p.h - gap };
     });
+    // 加上预占空间（prePlaced 中的主导纸箱）
+    prePlaced = prePlaced || [];
+    for (var ppi2 = 0; ppi2 < prePlaced.length; ppi2++) {
+      var pp2 = prePlaced[ppi2];
+      occupied.push({ x: pp2.x - gap, y: pp2.y - gap, z: pp2.z - gap, x2: pp2.x + pp2.l - gap, y2: pp2.y + pp2.w - gap, z2: pp2.z + pp2.h - gap });
+    }
 
     // 收集剩余需求
     const demands = [];
@@ -1724,11 +1762,18 @@ window.PackingEngine = (function() {
             var lastPrePlaced = domPackR.positions.slice(0, lastDomCount);
             var lastMixResult = null;
             if (secondaryConfigs.length > 0) {
-              var lastMixConfigs = secondaryConfigs.map(function(sc, sci) {
-                var rq = remainingSecondary[sci];
-                return { box: sc.box, qty: rq >= 1e8 ? null : Math.max(1, Math.ceil(rq)) };
-              });
-              lastMixResult = calcMixedPacking(c.l, c.w, c.h, lastMixConfigs, gap, allowRotate, 3, 'count', options, lastPrePlaced);
+              var lastMixConfigs = [];
+              for (var lmi = 0; lmi < secondaryConfigs.length; lmi++) {
+                var rrq = remainingSecondary[lmi];
+                if (rrq >= 1e8) {
+                  lastMixConfigs.push({ box: secondaryConfigs[lmi].box, qty: null });
+                } else if (rrq > 0) {
+                  lastMixConfigs.push({ box: secondaryConfigs[lmi].box, qty: Math.ceil(rrq) });
+                }
+              }
+              if (lastMixConfigs.length > 0) {
+                lastMixResult = calcMixedPacking(c.l, c.w, c.h, lastMixConfigs, gap, allowRotate, 3, 'count', options, lastPrePlaced);
+              }
             }
             crates.push(makeHybridCrate(c, domPackR.positions, domBC.box, lastDomCount, lastMixResult, secondaryConfigs));
           }
