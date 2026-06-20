@@ -347,7 +347,7 @@ describe('PackingEngine - calcReverseCompare 反推对比', () => {
     const boxConfig = [
       { box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false, weight: '' }, qty: 30 },
     ];
-    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true);
+    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true, ENUM_FAST);
     expect(results.length).toBe(2);
     // 第一个应该是推荐的（木箱数量最少）
     expect(results[0].recommended).toBe(true);
@@ -361,7 +361,7 @@ describe('PackingEngine - calcReverseCompare 反推对比', () => {
     const boxConfig = [
       { box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false, weight: '' }, qty: 10 },
     ];
-    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true);
+    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true, ENUM_FAST);
     expect(results).toHaveLength(1);
     expect(results[0].crateName).toBe('标箱');
     expect(results[0].totalCrates).toBeGreaterThan(0);
