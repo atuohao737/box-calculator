@@ -19,20 +19,29 @@ window.App = (function() {
     var modal = document.getElementById('cache-modal');
     if (!modal) return;
     modal.style.display = 'flex';
-    var bodyHtml = '';
+    // 填充分页名称 + 尺寸到标题
+    var crate = _cachePending ? _cachePending.crateList[0] : null;
+    var crateSizeText = crate ? (Math.round(crate.l) + ' x ' + Math.round(crate.w) + ' x ' + Math.round(crate.h)) : '该木箱';
+    var titleEl = modal.querySelector('.cache-modal-title');
+    if (titleEl) {
+      titleEl.textContent = '以下纸箱尺寸在 ' + crateSizeText + ' 木箱内已有最优排布记录';
+    }
+    var rowsHtml = '';
     for (var i = 0; i < cachedBoxes.length; i++) {
       var cb = cachedBoxes[i];
-      bodyHtml +=
-        '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px">' +
-          '<span class="color-dot" style="background:' + (cb.box.color || '#888') + ';width:10px;height:10px;border-radius:50%;flex-shrink:0"></span>' +
-          '<span style="flex:1;text-align:left">' + UI.escapeHtml(cb.box.name || '纸箱') + '</span>' +
-          '<b style="color:#1677ff">' + cb.result.count + '</b> 个' +
-          '<span style="color:#52c41a">' + (cb.result.utilRate * 100).toFixed(1) + '%</span>' +
-        '</div>';
+      var b = cb.box;
+      var r = cb.result;
+      var dimText = Math.round(b.l) + ' x ' + Math.round(b.w) + ' x ' + Math.round(b.h);
+      rowsHtml +=
+        '<tr>' +
+          '<td><span class="color-dot" style="background:' + UI.escapeHtml(b.color || '#888') + ';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle"></span>' + UI.escapeHtml(b.name || '纸箱') + '</td>' +
+          '<td>' + dimText + '</td>' +
+          '<td>' + r.count + ' 个</td>' +
+          '<td>' + (r.utilRate * 100).toFixed(1) + '%</td>' +
+        '</tr>';
     }
-    document.getElementById('cache-modal-body').innerHTML = '' +
-      '以下纸箱已有最优排布记录：<br><br>' + bodyHtml +
-      '<br><span style="font-size:11px;color:#888">选择"使用最优排布"将直接复用缓存结果，跳过计算</span>';
+    var tbody = document.getElementById('cache-modal-tbody');
+    if (tbody) tbody.innerHTML = rowsHtml;
   }
 
   function closeCacheModal() {
@@ -1328,6 +1337,15 @@ window.App = (function() {
       CM.save(br.crate.l, br.crate.w, br.crate.h, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
       UI.flashMsg('✅ 已标记为最优排布');
     },
+    markSingleOptimal: function(idx) {
+      var cr = S.calcResults[idx];
+      if (!cr || !cr.result) return;
+      var gap = parseFloat(document.getElementById('opt-gap').value) || 0;
+      var allowRotate = document.getElementById('opt-rotate').checked;
+      var keepUpright = !!cr.box.keepUpright;
+      CM.save(cr.crateL, cr.crateW, cr.crateH, cr.box.l, cr.box.w, cr.box.h, gap, allowRotate, keepUpright, cr.result);
+      UI.flashMsg('✅ 已标记为最优排布');
+    },
     useCachedResult, recalcFromCache, closeCacheModal,
     openSidebar, closeSidebar, cancelCalc, toggleTheme,
     // 批量模式
@@ -1356,7 +1374,7 @@ window.App = (function() {
       batchImportCrates: function(){}, selectBatchCrate: function(){}, selectBatchBox: function(){}, selectBatchBox2D: function(){}, markOptimalBatch: function(){}, toggleBoxEnabled: function(){},
       addReverseCrate: function(){}, removeReverseCrate: function(){}, updateReverseCrateName: function(){}, updateReverseCrateDim: function(){},
       batchImportReverseCrates: function(){}, selectReverseCrate: function(){},
-      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, markOptimal: function(){}
+      useCachedResult: function(){}, recalcFromCache: function(){}, closeCacheModal: function(){}, markOptimal: function(){}, markSingleOptimal: function(){}
     };
   }
 })();

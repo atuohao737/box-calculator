@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>木箱装箱计算器V3</title>
+<title>木箱装箱计算器V2.1</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <header class="app-header">
   <div style="display:flex;align-items:center">
-    <h1>📦 木箱装箱计算器V3</h1>
+    <h1>📦 木箱装箱计算器V2.1</h1>
     <span class="subtitle">输入尺寸 · 自动寻优 · 3D可视化</span>
   </div>
   <div class="header-actions">
@@ -342,11 +342,16 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="modal-overlay" id="cache-modal" style="display:none">
   <div class="cache-modal-card">
     <div class="cache-modal-icon">📌</div>
-    <h3 class="cache-modal-title">发现已缓存的最优排布</h3>
-    <p class="cache-modal-body" id="cache-modal-body">
-      该纸箱尺寸组合已有最优排布记录<br>
-      <b id="cache-modal-count" style="font-size:18px;color:#1677ff">0</b> 个 · 利用率 <b id="cache-modal-util" style="color:#52c41a">0%</b>
-    </p>
+    <h3 class="cache-modal-title">以下纸箱尺寸在该木箱尺寸已有最优排布记录</h3>
+    <div class="cache-modal-body" id="cache-modal-body">
+      <table class="cache-modal-table">
+        <thead>
+          <tr><th>纸箱名称</th><th>纸箱尺寸</th><th>数量</th><th>利用率</th></tr>
+        </thead>
+        <tbody id="cache-modal-tbody"></tbody>
+      </table>
+      <p class="cache-modal-hint">选择"使用最优排布"将直接复用缓存结果，跳过计算</p>
+    </div>
     <div class="cache-modal-actions">
       <button class="btn btn-primary" id="cache-btn-use" onclick="App.useCachedResult()">使用最优排布</button>
       <button class="btn btn-outline" id="cache-btn-recalc" onclick="App.recalcFromCache()">重新计算</button>

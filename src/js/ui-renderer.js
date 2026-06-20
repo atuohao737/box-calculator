@@ -216,7 +216,6 @@ window.UIRenderer = (function() {
                 '<div style="display:flex;gap:4px;flex-shrink:0">' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox(' + origIdx + ',' + ci + ')" title="查看3D布局">🎮</button>' +
                   '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px" onclick="event.stopPropagation();App.selectBatchBox2D(' + origIdx + ',' + ci + ')" title="查看俯视图">📐</button>' +
-                  '<button class="btn-outline btn-xs" style="padding:2px 8px;font-size:11px;border-radius:4px;color:#fa8c16" onclick="event.stopPropagation();App.markOptimalBatch(' + origIdx + ',' + ci + ')" title="标记此排布为最优">⭐</button>' +
                 '</div>' +
               '</div>';
           }
@@ -515,6 +514,7 @@ window.UIRenderer = (function() {
         '<div class="arr-row"><span class="arr-label">木箱内容积</span><span class="arr-val">' + (crateL * crateW * crateH / 1e9).toFixed(3) + ' m³</span></div>' +
       '</div>' +
       '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">' +
+        '<button class="btn btn-outline btn-xs" style="color:#fa8c16" onclick="event.stopPropagation();App.markSingleOptimal(' + idx + ')" title="标记此排布为最优">⭐ 标记最优</button>' +
         '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchToVisual(' + idx + ')" title="查看3D布局">🎮 3D</button>' +
         '<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();App.switchTo2D(' + idx + ')" title="查看俯视图">📐 2D</button>' +
       '</div>' +
