@@ -2595,6 +2595,67 @@ window.PackingEngine = (function() {
             }
           }
 
+          // 溢出处理：检查是否还有未满足的次要纸箱需求
+          // 如果末箱装不完，自动追加额外木箱
+          if (secondaryConfigs.length > 0) {
+            var maxOverflowCrates = 5;
+            for (var ofi = 0; ofi < maxOverflowCrates; ofi++) {
+              var totalPlaced = {};
+              for (var ci = 0; ci < crates.length; ci++) {
+                for (var bj = 0; bj < crates[ci].boxes.length; bj++) {
+                  var cb = crates[ci].boxes[bj];
+                  // 通过名称匹配次要纸箱（而非 boxIdx，因为不同 crate 的 boxIdx 可能不同）
+                  for (var sci = 0; sci < secondaryConfigs.length; sci++) {
+                    if (secondaryConfigs[sci].box.name === cb.box.name || secondaryConfigs[sci].box.id === cb.box.id) {
+                      totalPlaced[sci] = (totalPlaced[sci] || 0) + 1;
+                      break;
+                    }
+                  }
+                }
+              }
+              var overflowConfigs = [];
+              for (var sci2 = 0; sci2 < secondaryConfigs.length; sci2++) {
+                var sc = secondaryConfigs[sci2];
+                var sq = sc.qty;
+                var demand = (sq === null || sq === undefined || sq === '') ? null : Math.max(1, parseInt(sq) || 1);
+                if (demand === null) continue;
+                var placed = totalPlaced[sci2] || 0;
+                var remaining = demand - placed;
+                if (remaining > 0) {
+                  overflowConfigs.push({ box: sc.box, qty: remaining });
+                }
+              }
+              if (overflowConfigs.length === 0) break;
+              var ofResult = calcMixedPacking(c.l, c.w, c.h, overflowConfigs, gap, allowRotate, 3, 'count', options);
+              if (!ofResult || !ofResult.placed || ofResult.placed.length === 0) break;
+              var ofBoxes = ofResult.placed.map(function(p) {
+                var cfg = overflowConfigs[p.boxIdx];
+                for (var bci = 0; bci < boxConfigs.length; bci++) {
+                  if (boxConfigs[bci].box.name === cfg.box.name) {
+                    return { boxIdx: bci, box: boxConfigs[bci].box, pos: p };
+                  }
+                }
+                return { boxIdx: 0, box: cfg.box, pos: p };
+              });
+              var ofVol = ofBoxes.reduce(function(s, b) { return s + b.pos.l * b.pos.w * b.pos.h; }, 0);
+              var ofL = c.l - gap * 2, ofW = c.w - gap * 2, ofH = c.h - gap * 2;
+              var ofFV = ofL * ofW * ofH;
+              var ofTW = ofBoxes.reduce(function(s, b) { return s + (parseFloat(b.box.weight) || 0); }, 0);
+              crates.push({
+                crate: { l: c.l, w: c.w, h: c.h },
+                boxes: ofBoxes,
+                totalCount: ofBoxes.length,
+                utilRate: ofFV > 0 ? ofVol / ofFV : 0,
+                totalWeight: ofTW,
+                maxWeight: c.maxWeight || 0,
+                weightRate: c.maxWeight > 0 ? ofTW / c.maxWeight : 0,
+                displayCrateL: c.l,
+                displayCrateW: c.w,
+                displayCrateH: c.h
+              });
+            }
+          }
+
           var tbc = crates.reduce(function(s, cr) { return s + cr.totalCount; }, 0);
           var tv = 0;
           crates.forEach(function(cr) {
