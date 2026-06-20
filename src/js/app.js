@@ -52,8 +52,7 @@ window.App = (function() {
     document.getElementById('mode-single-hint').style.display = mode === 'single' ? 'block' : 'none';
     document.getElementById('mode-mixed-hint').style.display = mode === 'mixed' ? 'block' : 'none';
     document.getElementById('mode-reverse-hint').style.display = mode === 'reverse' ? 'block' : 'none';
-    // 策略选择器和重试次数仅在混装模式显示
-    document.getElementById('strategy-row').style.display = mode === 'mixed' ? 'flex' : 'none';
+    // 重试次数仅在混装模式显示
     document.getElementById('retry-row').style.display = mode === 'mixed' ? 'flex' : 'none';
     // 反推模式下显示标准木箱库区域
     var reverseCrateArea = document.getElementById('reverse-crate-area');
@@ -84,13 +83,6 @@ window.App = (function() {
       document.getElementById('scheme-tabs').innerHTML = '';
     }
     UI.renderBoxList();
-  }
-
-  // 优化策略切换
-  function setStrategy(strategy) {
-    S.mixStrategy = strategy;
-    document.getElementById('strategy-btn-count').classList.toggle('active', strategy === 'count');
-    document.getElementById('strategy-btn-util').classList.toggle('active', strategy === 'util');
   }
 
   // 纸箱管理
@@ -548,13 +540,13 @@ window.App = (function() {
           var progressText = modeLabel + ' · 正在计算 ' + (ci + 1) + '/' + totalCrates + ' 号木箱';
           updateCalcProgress(ci + 1, totalCrates, progressText);
 
-          var mixBest = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+          var mixBest = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, 'count');
 
           if (mixBest && mixBest.totalCount > 0) {
             mixBest.displayCrateL = cL;
             mixBest.displayCrateW = cW;
             mixBest.displayCrateH = cH;
-            mixBest.strategy = S.mixStrategy;
+            mixBest.strategy = 'count';
             if (maxWeight > 0) {
               var tW = 0;
               (mixBest.placed || []).forEach(function(p) {
@@ -1185,8 +1177,6 @@ window.App = (function() {
       UI.renderHistoryList();
 
       // 确保初始状态正确（单品模式下隐藏混装专属控件）
-      var strategyRow = document.getElementById('strategy-row');
-      if (strategyRow) strategyRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
       var retryRow = document.getElementById('retry-row');
       if (retryRow) retryRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
 
@@ -1222,7 +1212,7 @@ window.App = (function() {
   }
 
   return {
-    init, setMode, setStrategy, addBox, removeBox, updateBoxName,
+    init, setMode, addBox, removeBox, updateBoxName,
     saveCurrentBoxSpec, deleteBoxSpec, importBoxSpec,
     saveCrateSpec, importCrateSpec, deleteCrateSpec,
     showSpecManager, closeSpecManager, switchSpecTab,
@@ -1242,7 +1232,7 @@ window.App = (function() {
     console.error('[App] 模块初始化失败:', e.message, e.stack);
     return {
       init: function() { console.error('[App] 模块未正确初始化'); },
-      setMode: function(){}, setStrategy: function(){}, addBox: function(){},
+      setMode: function(){}, addBox: function(){},
       removeBox: function(){}, updateBoxName: function(){},
       saveCurrentBoxSpec: function(){}, deleteBoxSpec: function(){}, importBoxSpec: function(){},
       saveCrateSpec: function(){}, importCrateSpec: function(){}, deleteCrateSpec: function(){},

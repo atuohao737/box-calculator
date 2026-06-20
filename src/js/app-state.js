@@ -17,7 +17,6 @@ window.AppState = (function() {
   let currentMode = 'single'; // 'single' | 'mixed' | 'reverse'
   let currentSchemeIdx = 0;
   let specManagerTab = 'box';
-  let mixStrategy = 'count'; // 'count' = 数量优先, 'util' = 空间优先
   let maxWeight = ''; // 木箱最大承重(kg) - 兼容旧版单木箱
   let batchMode = false; // 批量模式开关
   let batchActiveCrateIdx = 0; // 批量结果中当前选中的木箱索引
@@ -149,8 +148,6 @@ window.AppState = (function() {
     set currentSchemeIdx(v) { currentSchemeIdx = v; },
     get specManagerTab() { return specManagerTab; },
     set specManagerTab(v) { specManagerTab = v; },
-    get mixStrategy() { return mixStrategy; },
-    set mixStrategy(v) { mixStrategy = v; },
     get maxWeight() { return maxWeight; },
     set maxWeight(v) { maxWeight = v; },
     get batchMode() { return batchMode; },

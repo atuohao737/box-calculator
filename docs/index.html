@@ -487,15 +487,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
         <input type="checkbox" id="opt-rotate" checked style="cursor:pointer">
         <label for="opt-rotate" style="font-size:13px;cursor:pointer;color:#444">允许旋转优化（自动尝试6种方向）</label>
       </div>
-      <div style="margin-top:8px;display:flex;align-items:center;gap:8px" id="strategy-row">
-        <label style="font-size:12px;color:#888;white-space:nowrap">优化策略</label>
-        <div class="mode-switch" style="flex:1">
-          <button class="mode-btn active" id="strategy-btn-count" onclick="App.setStrategy('count')">📊 数量优先</button>
-          <button class="mode-btn" id="strategy-btn-util" onclick="App.setStrategy('util')">📐 空间优先</button>
-        </div>
-        <span class="tip-icon" data-tip="数量优先：装入尽可能多的纸箱，适合发货最大化。&#10;空间优先：优先填满木箱空间，适合运费按体积计算。&#10;&#10;空间优先模式下，小纸箱不会无限填充，&#10;而是追求更高的空间利用率。">?</span>
-      </div>
-      <div style="margin-top:6px;display:flex;align-items:center;gap:8px" id="retry-row">
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px" id="retry-row">
         <label for="opt-retry" style="font-size:12px;color:#888;white-space:nowrap">混装重试次数</label>
         <input type="number" id="opt-retry" value="10" min="1" max="50" style="width:60px;border:1px solid #d9d9d9;border-radius:4px;padding:3px 6px;font-size:12px;text-align:center">
         <span class="tip-icon" data-tip="混装算法使用贪心策略，结果受纸箱排列顺序影响。&#10;增加重试次数会随机打乱顺序多次计算，&#10;取最优结果。&#10;建议 5~20 次，越多越可能找到更优解，&#10;但计算时间会相应增加。">?</span>
@@ -622,7 +614,6 @@ window.AppState = (function() {
   let currentMode = 'single'; // 'single' | 'mixed' | 'reverse'
   let currentSchemeIdx = 0;
   let specManagerTab = 'box';
-  let mixStrategy = 'count'; // 'count' = 数量优先, 'util' = 空间优先
   let maxWeight = ''; // 木箱最大承重(kg) - 兼容旧版单木箱
   let batchMode = false; // 批量模式开关
   let batchActiveCrateIdx = 0; // 批量结果中当前选中的木箱索引
@@ -754,8 +745,6 @@ window.AppState = (function() {
     set currentSchemeIdx(v) { currentSchemeIdx = v; },
     get specManagerTab() { return specManagerTab; },
     set specManagerTab(v) { specManagerTab = v; },
-    get mixStrategy() { return mixStrategy; },
-    set mixStrategy(v) { mixStrategy = v; },
     get maxWeight() { return maxWeight; },
     set maxWeight(v) { maxWeight = v; },
     get batchMode() { return batchMode; },
@@ -2597,7 +2586,11 @@ window.Visualizer2D = (function() {
     if (!ctx || !layerData || layerIdx >= layerData.length) return;
     activeLayer = layerIdx;
     var layer = layerData[layerIdx];
-    var positions = layer.boxes;
+    // 按坐标排序，视觉更整齐（不改算法，只改显示顺序）
+    var positions = layer.boxes.slice().sort(function(a, b) {
+      if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
+      return a.x - b.x;
+    });
 
     var wrap = canvas.parentElement;
     var wrapW = wrap ? wrap.clientWidth : 600;
@@ -4401,8 +4394,7 @@ window.App = (function() {
     document.getElementById('mode-single-hint').style.display = mode === 'single' ? 'block' : 'none';
     document.getElementById('mode-mixed-hint').style.display = mode === 'mixed' ? 'block' : 'none';
     document.getElementById('mode-reverse-hint').style.display = mode === 'reverse' ? 'block' : 'none';
-    // 策略选择器和重试次数仅在混装模式显示
-    document.getElementById('strategy-row').style.display = mode === 'mixed' ? 'flex' : 'none';
+    // 重试次数仅在混装模式显示
     document.getElementById('retry-row').style.display = mode === 'mixed' ? 'flex' : 'none';
     // 反推模式下显示标准木箱库区域
     var reverseCrateArea = document.getElementById('reverse-crate-area');
@@ -4433,13 +4425,6 @@ window.App = (function() {
       document.getElementById('scheme-tabs').innerHTML = '';
     }
     UI.renderBoxList();
-  }
-
-  // 优化策略切换
-  function setStrategy(strategy) {
-    S.mixStrategy = strategy;
-    document.getElementById('strategy-btn-count').classList.toggle('active', strategy === 'count');
-    document.getElementById('strategy-btn-util').classList.toggle('active', strategy === 'util');
   }
 
   // 纸箱管理
@@ -4897,13 +4882,13 @@ window.App = (function() {
           var progressText = modeLabel + ' · 正在计算 ' + (ci + 1) + '/' + totalCrates + ' 号木箱';
           updateCalcProgress(ci + 1, totalCrates, progressText);
 
-          var mixBest = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, S.mixStrategy);
+          var mixBest = PE.calcMixedPacking(cL, cW, cH, boxConfigs, gap, allowRotate, retryCount, 'count');
 
           if (mixBest && mixBest.totalCount > 0) {
             mixBest.displayCrateL = cL;
             mixBest.displayCrateW = cW;
             mixBest.displayCrateH = cH;
-            mixBest.strategy = S.mixStrategy;
+            mixBest.strategy = 'count';
             if (maxWeight > 0) {
               var tW = 0;
               (mixBest.placed || []).forEach(function(p) {
@@ -5534,8 +5519,6 @@ window.App = (function() {
       UI.renderHistoryList();
 
       // 确保初始状态正确（单品模式下隐藏混装专属控件）
-      var strategyRow = document.getElementById('strategy-row');
-      if (strategyRow) strategyRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
       var retryRow = document.getElementById('retry-row');
       if (retryRow) retryRow.style.display = S.currentMode === 'mixed' ? 'flex' : 'none';
 
@@ -5571,7 +5554,7 @@ window.App = (function() {
   }
 
   return {
-    init, setMode, setStrategy, addBox, removeBox, updateBoxName,
+    init, setMode, addBox, removeBox, updateBoxName,
     saveCurrentBoxSpec, deleteBoxSpec, importBoxSpec,
     saveCrateSpec, importCrateSpec, deleteCrateSpec,
     showSpecManager, closeSpecManager, switchSpecTab,
@@ -5591,7 +5574,7 @@ window.App = (function() {
     console.error('[App] 模块初始化失败:', e.message, e.stack);
     return {
       init: function() { console.error('[App] 模块未正确初始化'); },
-      setMode: function(){}, setStrategy: function(){}, addBox: function(){},
+      setMode: function(){}, addBox: function(){},
       removeBox: function(){}, updateBoxName: function(){},
       saveCurrentBoxSpec: function(){}, deleteBoxSpec: function(){}, importBoxSpec: function(){},
       saveCrateSpec: function(){}, importCrateSpec: function(){}, deleteCrateSpec: function(){},

@@ -58,7 +58,11 @@ window.Visualizer2D = (function() {
     if (!ctx || !layerData || layerIdx >= layerData.length) return;
     activeLayer = layerIdx;
     var layer = layerData[layerIdx];
-    var positions = layer.boxes;
+    // 按坐标排序，视觉更整齐（不改算法，只改显示顺序）
+    var positions = layer.boxes.slice().sort(function(a, b) {
+      if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
+      return a.x - b.x;
+    });
 
     var wrap = canvas.parentElement;
     var wrapW = wrap ? wrap.clientWidth : 600;
