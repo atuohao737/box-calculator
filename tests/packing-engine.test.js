@@ -367,4 +367,69 @@ describe('PackingEngine - calcReverseCompare 反推对比', () => {
     expect(results[0].totalCrates).toBeGreaterThan(0);
     expect(results[0].totalBoxCount).toBe(10);
   });
+
+  it('多纸箱反推 · 双类型主导+混装', { timeout: 30000 }, () => {
+    const crateList = [
+      { id: 1, l: 1200, w: 1000, h: 800, name: '大箱', maxWeight: 0 },
+    ];
+    const boxConfig = [
+      { box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false, weight: '' }, qty: 50 },
+      { box: { id: 2, l: 150, w: 100, h: 80, color: '#52c41a', name: '箱B', keepUpright: false, weight: '' }, qty: 30 },
+    ];
+    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true, ENUM_FAST);
+    expect(results).toHaveLength(1);
+    expect(results[0].totalCrates).toBeGreaterThan(0);
+    // 总纸箱数应 >= 需求数(80)，因为主导+混装应至少装下需求量
+    expect(results[0].totalBoxCount).toBeGreaterThanOrEqual(80);
+    // 每个 crate 至少包含主导纸箱
+    results[0].crates.forEach(cr => {
+      expect(cr.totalCount).toBeGreaterThan(0);
+      expect(cr.boxes.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('多纸箱反推 · 主导纸箱占主导地位', { timeout: 30000 }, () => {
+    const crateList = [
+      { id: 1, l: 1020, w: 1020, h: 930, name: '标箱', maxWeight: 0 },
+    ];
+    const boxConfig = [
+      { box: { id: 1, l: 360, w: 280, h: 210, color: '#4f9cf9', name: '大箱', keepUpright: false, weight: '' }, qty: 100 },
+      { box: { id: 2, l: 50, w: 50, h: 50, color: '#52c41a', name: '小箱', keepUpright: false, weight: '' }, qty: 10 },
+    ];
+    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true, ENUM_FAST);
+    expect(results).toHaveLength(1);
+    // 主导纸箱100个，每箱装41个，至少需要3箱
+    // 次要纸箱10个应在缝隙中尽量填入
+    expect(results[0].totalCrates).toBeLessThanOrEqual(3);
+    expect(results[0].totalBoxCount).toBeGreaterThanOrEqual(100);
+  });
+
+  it('多纸箱反推 · 结果格式兼容单纸箱', { timeout: 30000 }, () => {
+    // 确保新算法输出格式与旧算法一致，UI 不报错
+    const crateList = [
+      { id: 1, l: 1200, w: 1000, h: 800, name: '标箱', maxWeight: 0 },
+    ];
+    const boxConfig = [
+      { box: { id: 1, l: 300, w: 200, h: 150, color: '#4f9cf9', name: '箱A', keepUpright: false, weight: '' }, qty: 30 },
+      { box: { id: 2, l: 200, w: 100, h: 100, color: '#52c41a', name: '箱B', keepUpright: false, weight: '' }, qty: 20 },
+    ];
+    const results = PE.calcReverseCompare(crateList, boxConfig, 0, true, ENUM_FAST);
+    expect(results).toHaveLength(1);
+    const rr = results[0];
+    expect(rr.crates).toBeDefined();
+    expect(rr.totalCrates).toBeGreaterThan(0);
+    expect(rr.totalBoxCount).toBeGreaterThan(0);
+    expect(rr.totalUtilRate).toBeGreaterThan(0);
+    rr.crates.forEach(cr => {
+      expect(cr.crate).toBeDefined();
+      expect(cr.totalCount).toBe(cr.boxes.length);
+      cr.boxes.forEach(b => {
+        expect(b.box).toBeDefined();
+        expect(b.pos).toBeDefined();
+        expect(b.pos.x).toBeGreaterThanOrEqual(0);
+        expect(b.pos.y).toBeGreaterThanOrEqual(0);
+        expect(b.pos.z).toBeGreaterThanOrEqual(0);
+      });
+    });
+  });
 });

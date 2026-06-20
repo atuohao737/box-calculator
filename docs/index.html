@@ -1222,7 +1222,7 @@ window.PackingEngine = (function() {
   }
 
   // 单次混装计算（核心逻辑）
-  function calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, sortOrder) {
+  function calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, sortOrder, prePlaced) {
     const cL = crateL - gap * 2;
     const cW = crateW - gap * 2;
     const cH = crateH - gap * 2;
@@ -1248,6 +1248,28 @@ window.PackingEngine = (function() {
     if (boxList.length === 0) return { placed: [], totalCount: 0, utilRate: 0, breakdown: [] };
 
     let spaces = [{ x: gap, y: gap, z: gap, l: cL, w: cW, h: cH }];
+
+    // 预占空间：将已放置的主导纸箱位置从空间树中扣除
+    if (prePlaced && prePlaced.length > 0) {
+      for (var ppi = 0; ppi < prePlaced.length; ppi++) {
+        var pp = prePlaced[ppi];
+        var newSpaces = [];
+        for (var spi = 0; spi < spaces.length; spi++) {
+          var sp = spaces[spi];
+          if (sp.x < pp.x + pp.l && sp.x + sp.l > pp.x &&
+              sp.y < pp.y + pp.w && sp.y + sp.w > pp.y &&
+              sp.z < pp.z + pp.h && sp.z + sp.h > pp.z) {
+            var splits = splitSpaceFull(sp, pp.x, pp.y, pp.z, pp.l, pp.w, pp.h);
+            for (var si = 0; si < splits.length; si++) newSpaces.push(splits[si]);
+          } else {
+            newSpaces.push(sp);
+          }
+        }
+        spaces = newSpaces;
+      }
+      spaces.sort(function(a, b) { return (b.l * b.w * b.h) - (a.l * a.w * a.h); });
+    }
+
     const placed = [];
 
     // 使用传入的排序顺序。默认策略：有数量限制的纸箱优先，同组内按体积降序
@@ -1349,7 +1371,8 @@ window.PackingEngine = (function() {
   }
 
   // 智能组合探索器：对无数量限制的2-3种纸箱枚举数量组合
-  function exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate) {
+  function exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate, prePlaced) {
+    prePlaced = prePlaced || [];
     const cL = crateL - gap * 2;
     const cW = crateW - gap * 2;
     const cH = crateH - gap * 2;
@@ -1491,6 +1514,28 @@ window.PackingEngine = (function() {
       constrainedBoxes.forEach(cb => { targets[cb.origIdx] = cb.bc.qty; });
 
       let sps = [{ x: gap, y: gap, z: gap, l: cL, w: cW, h: cH }];
+
+      // 预占空间
+      if (prePlaced && prePlaced.length > 0) {
+        for (var pi = 0; pi < prePlaced.length; pi++) {
+          var ppe = prePlaced[pi];
+          var nsp = [];
+          for (var xi = 0; xi < sps.length; xi++) {
+            var s = sps[xi];
+            if (s.x < ppe.x + ppe.l && s.x + s.l > ppe.x &&
+                s.y < ppe.y + ppe.w && s.y + s.w > ppe.y &&
+                s.z < ppe.z + ppe.h && s.z + s.h > ppe.z) {
+              var spl = splitSpaceFull(s, ppe.x, ppe.y, ppe.z, ppe.l, ppe.w, ppe.h);
+              for (var qi = 0; qi < spl.length; qi++) nsp.push(spl[qi]);
+            } else {
+              nsp.push(s);
+            }
+          }
+          sps = nsp;
+        }
+        sps.sort(function(a, b) { return (b.l * b.w * b.h) - (a.l * a.w * a.h); });
+      }
+
       const placed = [];
       const mnX = gap, mxX = gap + cL;
       const mnY = gap, mxY = gap + cW;
@@ -1600,7 +1645,8 @@ window.PackingEngine = (function() {
   }
 
   // 混装多轮重试（增强版，支持数量优先/空间优先策略 + 智能组合探索）
-  function calcMixedPacking(crateL, crateW, crateH, boxConfigs, gap, allowRotate, retryCount, strategy, options) {
+  function calcMixedPacking(crateL, crateW, crateH, boxConfigs, gap, allowRotate, retryCount, strategy, options, prePlaced) {
+    prePlaced = prePlaced || [];
     var enumTimeLimit = (options && options.enumTimeLimit) || 15000;
     // 只有1种纸箱且无数量限制时，直接使用单品模式的网格层叠算法
     // 因为空间分割算法对单一尺寸纸箱不如网格对齐+尾余填充算法高效
@@ -1637,14 +1683,14 @@ window.PackingEngine = (function() {
     const isUtilStrategy = strategy === 'util';
 
     // 第一轮：体积降序（默认策略）
-    let bestResult = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, null);
+    let bestResult = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, null, prePlaced);
     if (!bestResult || bestResult.totalCount === 0) return bestResult;
 
     // 空间优先模式：尝试智能组合探索（适用于2-3种无数量限制纸箱）
     if (isUtilStrategy) {
       const freeBoxCount = boxConfigs.filter(bc => bc.qty === null).length;
       if (freeBoxCount >= 2 && freeBoxCount <= 3) {
-        const explorerResult = exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate);
+        const explorerResult = exploreCombinations(crateL, crateW, crateH, boxConfigs, gap, allowRotate, prePlaced);
         if (explorerResult && explorerResult.totalCount > 0) {
           if (explorerResult.utilRate > bestResult.utilRate) {
             bestResult = explorerResult;
@@ -1692,7 +1738,7 @@ window.PackingEngine = (function() {
         })
       ];
 
-      const candidate = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, shuffledByVol);
+      const candidate = calcMixedPackingOnce(crateL, crateW, crateH, boxConfigs, gap, allowRotate, shuffledByVol, prePlaced);
       if (!candidate) continue;
 
       if (isUtilStrategy) {
@@ -2254,7 +2300,8 @@ window.PackingEngine = (function() {
   }
 
   // 反推对比：对多种木箱尺寸运行算法，给出推荐
-  // 单一纸箱类型时使用 calcPacking（优化枚举），多类型时回退到 FFD
+  // 单纸箱 → calcPacking 优化枚举；多纸箱 → 主导纸箱 calcPacking + 次要 calcMixedPacking(prePlaced)
+  // 混装失败时回退到 FFD
   function calcReverseCompare(crateList, boxConfigs, gap, allowRotate, options) {
     var useOptimized = boxConfigs.length === 1;
 
@@ -2281,11 +2328,46 @@ window.PackingEngine = (function() {
       };
     }
 
+    // 辅助：合并 dominant + mix 为单个 crate
+    function makeHybridCrate(crateSpec, dominantPositions, dominantBox, dominantCount, mixResult, secondaryConfigs) {
+      var domBoxes = dominantPositions.slice(0, dominantCount).map(function(pos) {
+        return { boxIdx: 0, box: dominantBox, pos: pos };
+      });
+      var mixBoxes = [];
+      if (mixResult && mixResult.placed && mixResult.placed.length > 0) {
+        mixBoxes = mixResult.placed.map(function(p) {
+          var sc = secondaryConfigs[p.boxIdx];
+          return { boxIdx: p.boxIdx, box: sc ? sc.box : (p.name ? { l: p.l, w: p.w, h: p.h, name: p.name, color: p.color } : dominantBox), pos: p };
+        });
+      }
+      var allBoxes = domBoxes.concat(mixBoxes);
+      var totalCount = allBoxes.length;
+      var boxVol = allBoxes.reduce(function(s, b) { return s + b.pos.l * b.pos.w * b.pos.h; }, 0);
+      var iL = crateSpec.l - gap * 2;
+      var iW = crateSpec.w - gap * 2;
+      var iH = crateSpec.h - gap * 2;
+      var fullVol = iL * iW * iH;
+      var tw = allBoxes.reduce(function(s, b) { return s + (parseFloat(b.box.weight) || 0); }, 0);
+      return {
+        crate: { l: crateSpec.l, w: crateSpec.w, h: crateSpec.h },
+        boxes: allBoxes,
+        totalCount: totalCount,
+        utilRate: fullVol > 0 ? boxVol / fullVol : 0,
+        totalWeight: tw,
+        maxWeight: crateSpec.maxWeight || 0,
+        weightRate: crateSpec.maxWeight > 0 ? tw / crateSpec.maxWeight : 0,
+        displayCrateL: crateSpec.l,
+        displayCrateW: crateSpec.w,
+        displayCrateH: crateSpec.h
+      };
+    }
+
     var results = [];
     for (var i = 0; i < crateList.length; i++) {
       var c = crateList[i];
       var res;
       if (useOptimized) {
+        // === 单纸箱类型：calcPacking（现有逻辑，不变）===
         var bc = boxConfigs[0];
         var keepUpright = !!(bc.box && bc.box.keepUpright);
         var packR = calcPacking(c.l, c.w, c.h, bc.box.l, bc.box.w, bc.box.h, gap, 0, allowRotate, keepUpright, options);
@@ -2298,7 +2380,6 @@ window.PackingEngine = (function() {
             ? null : Math.max(1, parseInt(qtyVal) || 1);
 
           if (totalDemand === null) {
-            // 无限量 → 只装一个木箱
             var entry = makeCrateEntry(c, packR, bc.box, maxPerCrate);
             res = {
               crates: [entry],
@@ -2335,7 +2416,108 @@ window.PackingEngine = (function() {
           }
         }
       } else {
-        res = calcReverse(c.l, c.w, c.h, boxConfigs, gap, allowRotate, c.maxWeight || 0);
+        // === 多纸箱类型：主导 calcPacking + 次要 calcMixedPacking(prePlaced) ===
+        // 1) 选择主导纸箱：需求体积(qty×volume)最大的
+        var dominantIdx = 0;
+        var maxDemandVol = 0;
+        for (var di = 0; di < boxConfigs.length; di++) {
+          var dq = boxConfigs[di].qty;
+          var dd = (dq === null || dq === undefined || dq === '') ? 1e9 : Math.max(1, parseInt(dq) || 1);
+          var dv = dd * boxConfigs[di].box.l * boxConfigs[di].box.w * boxConfigs[di].box.h;
+          if (dv > maxDemandVol) { maxDemandVol = dv; dominantIdx = di; }
+        }
+        var domBC = boxConfigs[dominantIdx];
+        var domKeepUpright = !!(domBC.box && domBC.box.keepUpright);
+        var domPackR = calcPacking(c.l, c.w, c.h, domBC.box.l, domBC.box.w, domBC.box.h, gap, 0, allowRotate, domKeepUpright, options);
+
+        if (!domPackR || domPackR.count === 0) {
+          // 主导纸箱装不下 → 回退 FFD
+          res = calcReverse(c.l, c.w, c.h, boxConfigs, gap, allowRotate, c.maxWeight || 0);
+        } else {
+          var domMaxPerCrate = domPackR.count;
+          var domQtyVal = domBC.qty;
+          var domTotalDemand = (domQtyVal === null || domQtyVal === undefined || domQtyVal === '')
+            ? null : Math.max(1, parseInt(domQtyVal) || 1);
+
+          if (domTotalDemand === null) domTotalDemand = domMaxPerCrate; // 无限量→只装一个木箱
+
+          var numFullCrates = Math.floor(domTotalDemand / domMaxPerCrate);
+          var lastDomCount = domTotalDemand % domMaxPerCrate;
+
+          // 构建次要纸箱配置（排除主导纸箱）
+          var secondaryConfigs = [];
+          for (var si = 0; si < boxConfigs.length; si++) {
+            if (si === dominantIdx) continue;
+            secondaryConfigs.push({
+              box: boxConfigs[si].box,
+              qty: boxConfigs[si].qty
+            });
+          }
+
+          // 预先计算"满箱"的混装结果（所有 full crate 共用）
+          var prePlacedFull = domPackR.positions.slice(0, domMaxPerCrate);
+          var fullMixResult = null;
+          var secondaryPerFullCrate = {}; // {boxIdx: count}
+          if (secondaryConfigs.length > 0) {
+            var fullMixConfigs = secondaryConfigs.map(function(sc) { return { box: sc.box, qty: sc.qty }; });
+            fullMixResult = calcMixedPacking(c.l, c.w, c.h, fullMixConfigs, gap, allowRotate, 3, 'count', options, prePlacedFull);
+            if (fullMixResult && fullMixResult.placed) {
+              for (var mi = 0; mi < fullMixResult.placed.length; mi++) {
+                var mp = fullMixResult.placed[mi];
+                secondaryPerFullCrate[mp.boxIdx] = (secondaryPerFullCrate[mp.boxIdx] || 0) + 1;
+              }
+            }
+          }
+
+          var crates = [];
+          var remainingSecondary = {};
+          secondaryConfigs.forEach(function(sc, sci) {
+            var sq = sc.qty;
+            remainingSecondary[sci] = (sq === null || sq === undefined || sq === '') ? 1e9 : Math.max(1, parseInt(sq) || 1);
+          });
+
+          // 生成满箱
+          for (var fj = 0; fj < numFullCrates; fj++) {
+            // 扣除次要纸箱需求
+            for (var sci = 0; sci < secondaryConfigs.length; sci++) {
+              var used = secondaryPerFullCrate[sci] || 0;
+              if (remainingSecondary[sci] < 1e8) remainingSecondary[sci] = Math.max(0, remainingSecondary[sci] - used);
+            }
+            crates.push(makeHybridCrate(c, domPackR.positions, domBC.box, domMaxPerCrate, fullMixResult, secondaryConfigs));
+          }
+
+          // 生成最后一个部分箱（如果有余数）
+          if (lastDomCount > 0) {
+            var lastPrePlaced = domPackR.positions.slice(0, lastDomCount);
+            var lastMixResult = null;
+            if (secondaryConfigs.length > 0) {
+              var lastMixConfigs = secondaryConfigs.map(function(sc, sci) {
+                var rq = remainingSecondary[sci];
+                return { box: sc.box, qty: rq >= 1e8 ? null : Math.max(1, Math.ceil(rq)) };
+              });
+              lastMixResult = calcMixedPacking(c.l, c.w, c.h, lastMixConfigs, gap, allowRotate, 3, 'count', options, lastPrePlaced);
+            }
+            crates.push(makeHybridCrate(c, domPackR.positions, domBC.box, lastDomCount, lastMixResult, secondaryConfigs));
+          }
+
+          var tbc = crates.reduce(function(s, cr) { return s + cr.totalCount; }, 0);
+          var tv = 0;
+          crates.forEach(function(cr) {
+            cr.boxes.forEach(function(b) { tv += b.pos.l * b.pos.w * b.pos.h; });
+          });
+          var iL = c.l - gap * 2, iW = c.w - gap * 2, iH = c.h - gap * 2;
+          var fullVol = iL * iW * iH;
+          var tc = crates.length;
+          var tur = tc > 0 && fullVol > 0 ? tv / (fullVol * tc) : 0;
+          res = {
+            crates: crates,
+            totalCrates: tc,
+            totalBoxCount: tbc,
+            totalUtilRate: tur,
+            crateL: c.l, crateW: c.w, crateH: c.h,
+            gap: gap
+          };
+        }
       }
       res.crateName = c.name || ('木箱' + (i + 1));
       res.crateId = c.id;
